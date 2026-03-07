@@ -1,20 +1,59 @@
+import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { ActivityIndicator, View } from 'react-native';
+import { AppProvider, useApp } from './src/context/AppContext';
+import { SavedPhrasesProvider } from './src/context/SavedPhrasesContext';
+import { StreakProvider } from './src/context/StreakContext';
+import { UsageProvider } from './src/context/UsageContext';
+import WelcomeScreen from './src/screens/WelcomeScreen';
+import OnboardingScreen from './src/screens/OnboardingScreen';
+import TabNavigator from './src/navigation/TabNavigator';
 
-export default function App() {
+const Stack = createNativeStackNavigator();
+
+function RootNavigator() {
+  const { loadStoredData } = useApp();
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    loadStoredData().finally(() => setIsLoading(false));
+  }, [loadStoredData]);
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#3b82f6" />
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <Stack.Navigator
+      initialRouteName="Welcome"
+      screenOptions={{ headerShown: false }}
+    >
+      <Stack.Screen name="Welcome" component={WelcomeScreen} />
+      <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+      <Stack.Screen name="Main" component={TabNavigator} />
+    </Stack.Navigator>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+export default function App() {
+  return (
+    <AppProvider>
+      <SavedPhrasesProvider>
+      <StreakProvider>
+      <UsageProvider>
+      <NavigationContainer>
+        <RootNavigator />
+        <StatusBar style="auto" />
+      </NavigationContainer>
+      </UsageProvider>
+      </StreakProvider>
+      </SavedPhrasesProvider>
+    </AppProvider>
+  );
+}
