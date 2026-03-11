@@ -1,4 +1,10 @@
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+import Constants from 'expo-constants';
+
+// Baked in at build time via app.config.js extra.apiUrl (so EAS builds work without .env)
+const API_URL =
+  Constants.expoConfig?.extra?.apiUrl ??
+  process.env.EXPO_PUBLIC_API_URL ??
+  'http://localhost:3000';
 
 export const apiClient = {
   baseUrl: API_URL,
