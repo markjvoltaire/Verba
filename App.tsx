@@ -14,17 +14,17 @@ import TabNavigator from './src/navigation/TabNavigator';
 const Stack = createNativeStackNavigator();
 
 function RootNavigator() {
-  const { loadStoredData } = useApp();
+  const { loadStoredData, userChecked } = useApp();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     loadStoredData().finally(() => setIsLoading(false));
   }, [loadStoredData]);
 
-  if (isLoading) {
+  if (isLoading || !userChecked) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#3b82f6" />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#00877B' }}>
+        <ActivityIndicator size="large" color="#F8F9FA" />
       </View>
     );
   }

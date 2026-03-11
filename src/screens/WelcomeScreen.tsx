@@ -1,22 +1,84 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useEffect, useRef, useState } from "react";
+import { StyleSheet, Text, View, Pressable, Animated } from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import { useApp } from "../context/AppContext";
+import WaveLogo from "../components/WaveLogo";
 
-export default function WelcomeScreen({ navigation }: { navigation: any }) {
+const GREETINGS = ["Hello", "Hola", "Bonjour", "Ciao"];
+const GREETING_INTERVAL_MS = 1800;
+
+export default function WelcomeScreen() {
+  const navigation = useNavigation();
+  const { userChecked } = useApp();
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [greetingIndex, setGreetingIndex] = useState(0);
+  const buttonOpacity = useRef(new Animated.Value(0)).current;
+  const buttonTranslateY = useRef(new Animated.Value(24)).current;
+  const greetingOpacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      Animated.timing(greetingOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start(() => {
+        setGreetingIndex((i) => (i + 1) % GREETINGS.length);
+        Animated.timing(greetingOpacity, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }).start();
+      });
+    }, GREETING_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [greetingOpacity]);
+
+  useEffect(() => {
+    if (!userChecked || !isAnimating) return;
+    Animated.parallel([
+      Animated.timing(buttonOpacity, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      Animated.timing(buttonTranslateY, {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [userChecked, isAnimating, buttonOpacity, buttonTranslateY]);
+
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Verba</Text>
-      <Text style={styles.tagline}>Practice speaking a language with AI</Text>
-      <Text style={styles.subtitle}>
-        Build confidence through guided phrases and realistic conversations
-      </Text>
-
-      <TouchableOpacity
-        style={styles.button}
-        onPress={() => navigation.navigate('Onboarding')}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.buttonText}>Get Started</Text>
-      </TouchableOpacity>
+      <View style={styles.content}>
+        <Animated.Text style={[styles.title, { opacity: greetingOpacity }]}>
+          {GREETINGS[greetingIndex]} Verba
+        </Animated.Text>
+        <WaveLogo
+          startAnimatingAfterMs={1200}
+          onAnimationStart={() => setIsAnimating(true)}
+        />
+      </View>
+      {userChecked && isAnimating && (
+        <Animated.View
+          style={[
+            styles.buttonWrap,
+            {
+              opacity: buttonOpacity,
+              transform: [{ translateY: buttonTranslateY }],
+            },
+          ]}
+        >
+          <Pressable
+            style={styles.button}
+            onPress={() => navigation.navigate("Onboarding")}
+          >
+            <Text style={styles.buttonText}>Get Started</Text>
+          </Pressable>
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -24,40 +86,38 @@ export default function WelcomeScreen({ navigation }: { navigation: any }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 24,
-    paddingTop: 120,
-    backgroundColor: '#f8fafc',
+    backgroundColor: "#00877B",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  content: {
+    alignItems: "center",
+    justifyContent: "center",
   },
   title: {
-    fontSize: 42,
-    fontWeight: '800',
-    color: '#0f172a',
-    marginBottom: 16,
-    textAlign: 'center',
+    fontFamily: "Georgia",
+    fontSize: 28,
+    fontWeight: "700",
+    color: "#F8F9FA",
+    marginBottom: 24,
   },
-  tagline: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#3b82f6',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#64748b',
-    marginBottom: 60,
-    textAlign: 'center',
-    lineHeight: 24,
+  buttonWrap: {
+    position: "absolute",
+    bottom: 48,
+    left: 32,
+    right: 32,
   },
   button: {
-    backgroundColor: '#3b82f6',
-    borderRadius: 12,
-    padding: 18,
-    alignItems: 'center',
+    paddingVertical: 18,
+    borderRadius: 28,
+    backgroundColor: "#F8F9FA",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
   },
   buttonText: {
-    color: '#fff',
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "700",
+    color: "#00877B",
   },
 });

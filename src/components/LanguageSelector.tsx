@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   optionSelected: {
-    backgroundColor: '#dbeafe',
+    backgroundColor: '#e6f7f6',
   },
   optionFlag: {
     fontSize: 24,

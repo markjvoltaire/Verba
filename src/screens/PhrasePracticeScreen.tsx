@@ -13,7 +13,7 @@ import {
   setAudioModeAsync,
   requestRecordingPermissionsAsync,
 } from 'expo-audio';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Speech from 'expo-speech';
 import { evaluateSpeech } from '../api/speech';
 import { getPhrases, Phrase } from '../api/phrases';
@@ -26,11 +26,19 @@ export default function PhrasePracticeScreen({
   route,
 }: {
   navigation: any;
-  route: { params?: { phrase?: Phrase | null; phraseIndex?: number } };
+  route: {
+    params?: {
+      phrase?: Phrase | null;
+      phraseIndex?: number;
+      scenario?: string;
+      difficulty?: string;
+    };
+  };
 }) {
   const { language } = useApp();
   const { recordPhrasePractice } = useStreak();
   const { canPractice, recordUsage } = useUsage();
+  const scenario = route.params?.scenario;
   const [phrases, setPhrases] = useState<Phrase[]>([]);
   const [currentIndex, setCurrentIndex] = useState(route.params?.phraseIndex ?? 0);
   const [isRecording, setIsRecording] = useState(false);
@@ -47,8 +55,8 @@ export default function PhrasePracticeScreen({
   const phrase = phrases[currentIndex] ?? route.params?.phrase;
 
   useEffect(() => {
-    getPhrases(language).then(setPhrases).catch(() => setPhrases([]));
-  }, [language]);
+    getPhrases(language, scenario).then(setPhrases).catch(() => setPhrases([]));
+  }, [language, scenario]);
 
   useEffect(() => {
     (async () => {
@@ -59,6 +67,7 @@ export default function PhrasePracticeScreen({
       await setAudioModeAsync({
         allowsRecording: true,
         playsInSilentMode: true,
+        shouldRouteThroughEarpiece: false,
       });
     })();
   }, []);
@@ -138,8 +147,10 @@ export default function PhrasePracticeScreen({
   if (!phrase && phrases.length === 0) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator size="large" color="#3b82f6" />
-        <Text style={styles.loadingText}>Loading phrases...</Text>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#00877B" />
+          <Text style={styles.loadingText}>Loading phrases...</Text>
+        </View>
       </View>
     );
   }
@@ -215,8 +226,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 24,
-    paddingTop: 60,
-    backgroundColor: '#f8fafc',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   loadingText: {
     marginTop: 16,
@@ -234,7 +248,7 @@ const styles = StyleSheet.create({
   },
   backButtonText: {
     fontSize: 16,
-    color: '#3b82f6',
+    color: '#00877B',
     fontWeight: '600',
   },
   phraseCard: {
@@ -280,7 +294,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   speakButton: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#00877B',
     width: 120,
     height: 120,
     borderRadius: 60,
@@ -326,7 +340,7 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   scoreBadge: {
-    backgroundColor: '#dbeafe',
+    backgroundColor: '#e6f7f6',
     padding: 12,
     borderRadius: 10,
     marginTop: 16,
@@ -335,10 +349,10 @@ const styles = StyleSheet.create({
   scoreText: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1d4ed8',
+    color: '#006d63',
   },
   nextButton: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#00877B',
     padding: 16,
     borderRadius: 12,
     marginTop: 24,

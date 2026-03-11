@@ -1,20 +1,23 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { Calendar } from 'react-native-calendars';
 import { useApp } from '../context/AppContext';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { useStreak } from '../context/StreakContext';
 import { useUsage } from '../context/UsageContext';
-import { getPhrases, Phrase } from '../api/phrases';
 
-export default function HomeScreen({ navigation }: { navigation: any }) {
+export default function HomeScreen() {
   const { language } = useApp();
-  const { streak, todayPhraseCount, dailyGoal } = useStreak();
+  const { streak, todayPhraseCount, dailyGoal, practiceDates } = useStreak();
   const { canPractice, todayUsageSeconds, plan } = useUsage();
-  const [phrases, setPhrases] = useState<Phrase[]>([]);
 
-  useEffect(() => {
-    getPhrases(language).then(setPhrases).catch(() => setPhrases([]));
-  }, [language]);
+  const markedDates = useMemo(() => {
+    const marked: Record<string, { marked: boolean; dotColor?: string }> = {};
+    practiceDates.forEach((d) => {
+      marked[d] = { marked: true, dotColor: '#00877B' };
+    });
+    return marked;
+  }, [practiceDates]);
 
   const languageLabels: Record<string, string> = {
     es: 'Spanish',
@@ -24,7 +27,7 @@ export default function HomeScreen({ navigation }: { navigation: any }) {
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Verba</Text>
@@ -63,35 +66,42 @@ export default function HomeScreen({ navigation }: { navigation: any }) {
         </View>
       )}
 
-      <TouchableOpacity
-        style={[styles.primaryButton, !canPractice && styles.buttonDisabled]}
-        onPress={() =>
-          navigation.getParent()?.navigate('Speak', {
-            screen: 'PhrasePractice',
-            params: { phrase: phrases[0] || null },
-          })
-        }
-        disabled={!canPractice}
-      >
-        <Text style={styles.primaryButtonText}>Start phrase practice</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.secondaryButton}
-        onPress={() => navigation.navigate('Scenarios')}
-      >
-        <Text style={styles.secondaryButtonText}>Scenario practice</Text>
-      </TouchableOpacity>
-    </View>
+      <View style={styles.calendarCard}>
+        <Text style={styles.calendarTitle}>Practice history</Text>
+        <Text style={styles.calendarSubtitle}>Days you practiced</Text>
+        <Calendar
+          current={new Date().toISOString().slice(0, 10)}
+          markedDates={markedDates}
+          hideExtraDays
+          theme={{
+            backgroundColor: 'transparent',
+            calendarBackground: 'transparent',
+            textSectionTitleColor: '#64748b',
+            selectedDayBackgroundColor: '#00877B',
+            selectedDayTextColor: '#fff',
+            todayTextColor: '#00877B',
+            dayTextColor: '#0f172a',
+            textDisabledColor: '#cbd5e1',
+            arrowColor: '#00877B',
+            monthTextColor: '#0f172a',
+            textDayFontWeight: '500',
+            textMonthFontWeight: '700',
+          }}
+        />
+      </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#f8fafc',
+  },
+  content: {
     padding: 24,
     paddingTop: 60,
-    backgroundColor: '#f8fafc',
+    paddingBottom: 40,
   },
   header: {
     flexDirection: 'row',
@@ -141,7 +151,7 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#00877B',
     borderRadius: 4,
   },
   progressText: {
@@ -170,33 +180,27 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#92400e',
   },
-  primaryButton: {
-    backgroundColor: '#3b82f6',
-    borderRadius: 12,
-    padding: 18,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  secondaryButton: {
+  calendarCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 18,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#e2e8f0',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  secondaryButtonText: {
-    color: '#475569',
-    fontSize: 18,
+  calendarTitle: {
+    fontSize: 16,
     fontWeight: '600',
+    color: '#0f172a',
+    marginBottom: 4,
   },
-  buttonDisabled: {
-    backgroundColor: '#94a3b8',
+  calendarSubtitle: {
+    fontSize: 14,
+    color: '#64748b',
+    marginBottom: 16,
   },
   limitCard: {
     backgroundColor: '#fef2f2',

@@ -4,6 +4,7 @@ import { Phrase } from '../api/phrases';
 
 const GROUPS_KEY = '@verba_saved_groups';
 const PHRASES_KEY = '@verba_saved_phrases';
+export const FLASHCARDS_GROUP_ID = '@verba_flashcards_default';
 
 export interface SavedPhraseGroup {
   id: string;
@@ -25,6 +26,11 @@ interface SavedPhrasesContextType {
   removePhraseFromGroup: (savedPhraseId: string) => Promise<void>;
   getPhrasesInGroup: (groupId: string) => SavedPhrase[];
   loadSavedData: () => Promise<void>;
+  addToFlashcards: (phrase: Phrase) => Promise<void>;
+  removeFromFlashcards: (savedPhraseId: string) => Promise<void>;
+  getFlashcards: () => SavedPhrase[];
+  isInFlashcards: (phraseId: string) => boolean;
+  getFlashcardForPhrase: (phraseId: string) => SavedPhrase | null;
 }
 
 const SavedPhrasesContext = createContext<SavedPhrasesContextType | null>(null);
@@ -90,6 +96,52 @@ export function SavedPhrasesProvider({ children }: { children: React.ReactNode }
     return savedPhrases.filter((p) => p.groupId === groupId);
   }, [savedPhrases]);
 
+  const ensureFlashcardsGroup = useCallback(async () => {
+    const stored = await AsyncStorage.getItem(GROUPS_KEY);
+    const currentGroups: SavedPhraseGroup[] = stored ? JSON.parse(stored) : [];
+    const exists = currentGroups.some((g) => g.id === FLASHCARDS_GROUP_ID);
+    if (!exists) {
+      const group: SavedPhraseGroup = { id: FLASHCARDS_GROUP_ID, name: 'My Flashcards' };
+      const next = [...currentGroups, group];
+      setGroups(next);
+      await AsyncStorage.setItem(GROUPS_KEY, JSON.stringify(next));
+    }
+  }, []);
+
+  const addToFlashcards = useCallback(
+    async (phrase: Phrase) => {
+      if (savedPhrases.some((p) => p.groupId === FLASHCARDS_GROUP_ID && p.phrase.id === phrase.id)) {
+        return;
+      }
+      await ensureFlashcardsGroup();
+      await addPhraseToGroup(FLASHCARDS_GROUP_ID, phrase);
+    },
+    [ensureFlashcardsGroup, addPhraseToGroup, savedPhrases]
+  );
+
+  const removeFromFlashcards = useCallback(
+    (savedPhraseId: string) => removePhraseFromGroup(savedPhraseId),
+    [removePhraseFromGroup]
+  );
+
+  const getFlashcards = useCallback(
+    () => savedPhrases.filter((p) => p.groupId === FLASHCARDS_GROUP_ID),
+    [savedPhrases]
+  );
+
+  const getFlashcardForPhrase = useCallback(
+    (phraseId: string) =>
+      savedPhrases.find(
+        (p) => p.groupId === FLASHCARDS_GROUP_ID && p.phrase.id === phraseId
+      ) ?? null,
+    [savedPhrases]
+  );
+
+  const isInFlashcards = useCallback(
+    (phraseId: string) => !!getFlashcardForPhrase(phraseId),
+    [getFlashcardForPhrase]
+  );
+
   return (
     <SavedPhrasesContext.Provider
       value={{
@@ -101,6 +153,11 @@ export function SavedPhrasesProvider({ children }: { children: React.ReactNode }
         removePhraseFromGroup,
         getPhrasesInGroup,
         loadSavedData,
+        addToFlashcards,
+        removeFromFlashcards,
+        getFlashcards,
+        isInFlashcards,
+        getFlashcardForPhrase,
       }}
     >
       {children}

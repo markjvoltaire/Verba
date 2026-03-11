@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import WaveLogo from '../components/WaveLogo';
 import {
   useAudioRecorder,
   useAudioPlayer,
@@ -16,9 +18,11 @@ import {
   setAudioModeAsync,
   requestRecordingPermissionsAsync,
 } from 'expo-audio';
+import * as FileSystem from 'expo-file-system/legacy';
 import { getOpeningMessage, sendMessage, ConversationMessage } from '../api/conversation';
 import { getSpeechStreamUrl } from '../api/tts';
 import { useApp } from '../context/AppContext';
+import { useStreak } from '../context/StreakContext';
 import { useUsage } from '../context/UsageContext';
 
 const SCENARIOS = [
@@ -29,6 +33,7 @@ const SCENARIOS = [
 ];
 
 export default function ScenarioScreen({ navigation }: { navigation: any }) {
+  const insets = useSafeAreaInsets();
   const { language } = useApp();
   const [scenario, setScenario] = useState<string | null>(null);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
@@ -37,6 +42,7 @@ export default function ScenarioScreen({ navigation }: { navigation: any }) {
   const [isRecording, setIsRecording] = useState(false);
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recordStartRef = useRef<number | null>(null);
+  const { recordPracticeDate } = useStreak();
   const { canPractice, recordUsage } = useUsage();
   const scrollRef = useRef<ScrollView>(null);
   const [playingMsgIndex, setPlayingMsgIndex] = useState<number | null>(null);
@@ -51,9 +57,25 @@ export default function ScenarioScreen({ navigation }: { navigation: any }) {
     }
   }, [ttsUri]);
 
-  const handlePlayMessage = (content: string, index: number) => {
+  useEffect(() => {
+    if (!player || !ttsUri) return;
+    const sub = player.addListener('playbackStatusUpdate', (status) => {
+      if (status.didJustFinish) {
+        setTtsUri(null);
+        setPlayingMsgIndex(null);
+      }
+    });
+    return () => sub.remove();
+  }, [player, ttsUri]);
+
+  const handlePlayMessage = async (content: string, index: number) => {
     if (!content.trim() || playingMsgIndex !== null) return;
     setPlayingMsgIndex(index);
+    await setAudioModeAsync({
+      allowsRecording: false,
+      playsInSilentMode: true,
+      shouldRouteThroughEarpiece: false,
+    });
     const uri = getSpeechStreamUrl(content, 'marin', TTS_LANG[language] || language);
     setTtsUri(uri);
     setTimeout(() => {
@@ -68,6 +90,7 @@ export default function ScenarioScreen({ navigation }: { navigation: any }) {
       await setAudioModeAsync({
         allowsRecording: true,
         playsInSilentMode: true,
+        shouldRouteThroughEarpiece: false,
       });
     })();
   }, []);
@@ -115,6 +138,11 @@ export default function ScenarioScreen({ navigation }: { navigation: any }) {
       return;
     }
     try {
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+        shouldRouteThroughEarpiece: false,
+      });
       await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();
       recordStartRef.current = Date.now();
@@ -146,6 +174,7 @@ export default function ScenarioScreen({ navigation }: { navigation: any }) {
       if (recordStartRef.current) {
         const seconds = Math.ceil((Date.now() - recordStartRef.current) / 1000);
         await recordUsage(seconds);
+        await recordPracticeDate();
         recordStartRef.current = null;
       }
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
@@ -159,8 +188,12 @@ export default function ScenarioScreen({ navigation }: { navigation: any }) {
 
   if (!scenario) {
     return (
-      <View style={styles.container}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+      <View style={[styles.container, { padding: 24, paddingTop: 60 + insets.top }]}>
+        <TouchableOpacity
+          style={[styles.backButton, { top: insets.top }]}
+          onPress={() => navigation.goBack()}
+          hitSlop={12}
+        >
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Choose a scenario</Text>
@@ -173,7 +206,7 @@ export default function ScenarioScreen({ navigation }: { navigation: any }) {
             disabled={isLoading}
           >
             {isLoading ? (
-              <ActivityIndicator color="#3b82f6" />
+              <ActivityIndicator color="#00877B" />
             ) : (
               <Text style={styles.scenarioOptionText}>{s.label}</Text>
             )}
@@ -183,28 +216,35 @@ export default function ScenarioScreen({ navigation }: { navigation: any }) {
     );
   }
 
+  const scenarioLabel = SCENARIOS.find((s) => s.id === scenario)?.label || scenario;
+
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => {
-            setScenario(null);
-            setMessages([]);
-          }}
-        >
-          <Text style={styles.backButtonText}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-          {SCENARIOS.find((s) => s.id === scenario)?.label || scenario}
-        </Text>
+      <View style={[styles.topBar, { top: insets.top }]} pointerEvents="box-none">
+        <Text style={styles.topBarText}>{scenarioLabel}</Text>
       </View>
+
+      <TouchableOpacity
+        style={[styles.backButton, { top: insets.top }]}
+        onPress={() => {
+          setScenario(null);
+          setMessages([]);
+        }}
+        hitSlop={12}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.backButtonText}>← Back</Text>
+      </TouchableOpacity>
 
       <ScrollView
         ref={scrollRef}
         style={styles.messagesScroll}
-        contentContainerStyle={styles.messagesContent}
+        contentContainerStyle={[styles.messagesContent, { paddingTop: 100, paddingBottom: 140 }]}
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
       >
+        <View style={styles.logoSection}>
+          <WaveLogo fill="#00877B" animated={false} size={140} />
+        </View>
         {messages.map((msg, i) => (
           <View
             key={i}
@@ -228,11 +268,12 @@ export default function ScenarioScreen({ navigation }: { navigation: any }) {
         ))}
         {isLoading && (
           <View style={[styles.messageBubble, styles.aiBubble]}>
-            <ActivityIndicator size="small" color="#3b82f6" />
+            <ActivityIndicator size="small" color="#00877B" />
           </View>
         )}
       </ScrollView>
 
+      <View style={[styles.bottomSection, { paddingBottom: insets.bottom + 24 }]}>
       <View style={styles.inputRow}>
         <TextInput
           style={styles.input}
@@ -264,6 +305,7 @@ export default function ScenarioScreen({ navigation }: { navigation: any }) {
           <Text style={styles.sendButtonText}>Send</Text>
         </TouchableOpacity>
       </View>
+      </View>
     </View>
   );
 }
@@ -271,17 +313,36 @@ export default function ScenarioScreen({ navigation }: { navigation: any }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 24,
-    paddingTop: 60,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#fff',
   },
   backButton: {
-    marginBottom: 24,
+    position: 'absolute',
+    left: 20,
+    zIndex: 10,
   },
   backButtonText: {
     fontSize: 16,
-    color: '#3b82f6',
+    color: '#00877B',
     fontWeight: '600',
+  },
+  topBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 36,
+    zIndex: 1,
+  },
+  topBarText: {
+    fontSize: 15,
+    color: '#0f172a',
+    fontWeight: '600',
+  },
+  logoSection: {
+    alignItems: 'center',
+    marginBottom: 24,
   },
   title: {
     fontSize: 28,
@@ -311,22 +372,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#0f172a',
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#0f172a',
-    marginLeft: 16,
-  },
   messagesScroll: {
     flex: 1,
   },
   messagesContent: {
-    paddingBottom: 24,
+    paddingHorizontal: 24,
   },
   messageBubble: {
     maxWidth: '85%',
@@ -336,7 +386,7 @@ const styles = StyleSheet.create({
   },
   userBubble: {
     alignSelf: 'flex-end',
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#00877B',
   },
   aiBubble: {
     alignSelf: 'flex-start',
@@ -363,10 +413,21 @@ const styles = StyleSheet.create({
   speakMsgIcon: {
     fontSize: 18,
   },
+  bottomSection: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+    zIndex: 1,
+  },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 16,
     gap: 8,
   },
   input: {
@@ -379,7 +440,7 @@ const styles = StyleSheet.create({
     borderColor: '#e2e8f0',
   },
   sendButton: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#00877B',
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderRadius: 12,
