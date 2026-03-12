@@ -16,9 +16,6 @@ import FlashcardsScreen from '../screens/FlashcardsScreen';
 import ScenarioScreen from '../screens/ScenarioScreen';
 import SpeakModeSelectScreen from '../screens/SpeakModeSelectScreen';
 import LessonSelectScreen from '../screens/LessonSelectScreen';
-import RolePlaySelectScreen from '../screens/RolePlaySelectScreen';
-import StorySelectScreen from '../screens/StorySelectScreen';
-import StoryScreen from '../screens/StoryScreen';
 
 const Tab = createBottomTabNavigator();
 const SpeakStack = createNativeStackNavigator();
@@ -27,7 +24,7 @@ const ProgressStack = createNativeStackNavigator();
 function CustomTabBar(props: BottomTabBarProps) {
   const activeRoute = props.state.routes[props.state.index];
   const focusedRouteName =
-    getFocusedRouteNameFromRoute(activeRoute) ?? 'ModeSelect';
+    getFocusedRouteNameFromRoute(activeRoute) ?? 'LessonSelect';
   const isOnPracticeScreen =
     activeRoute.name === 'Speak' && focusedRouteName === 'PracticeList';
 
@@ -40,15 +37,14 @@ function CustomTabBar(props: BottomTabBarProps) {
 
 function SpeakStackScreen() {
   return (
-    <SpeakStack.Navigator screenOptions={{ headerShown: false }}>
+    <SpeakStack.Navigator
+      screenOptions={{ headerShown: false }}
+      initialRouteName="LessonSelect"
+    >
       <SpeakStack.Screen name="ModeSelect" component={SpeakModeSelectScreen} />
       <SpeakStack.Screen name="LessonSelect" component={LessonSelectScreen} />
       <SpeakStack.Screen name="PracticeList" component={PracticeScreen} />
       <SpeakStack.Screen name="PhrasePractice" component={PhrasePracticeScreen} />
-      <SpeakStack.Screen name="RolePlaySelect" component={RolePlaySelectScreen} />
-      <SpeakStack.Screen name="Scenario" component={ScenarioScreen} />
-      <SpeakStack.Screen name="StorySelect" component={StorySelectScreen} />
-      <SpeakStack.Screen name="Story" component={StoryScreen} />
     </SpeakStack.Navigator>
   );
 }

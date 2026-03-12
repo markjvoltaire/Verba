@@ -9,7 +9,7 @@ import { useUsage } from '../context/UsageContext';
 export default function HomeScreen() {
   const { language } = useApp();
   const { streak, todayPhraseCount, dailyGoal, practiceDates } = useStreak();
-  const { canPractice, todayUsageSeconds, plan } = useUsage();
+  const { canPractice, todayUsageSeconds, plan, freeLimitSeconds } = useUsage();
 
   const markedDates = useMemo(() => {
     const marked: Record<string, { marked: boolean; dotColor?: string }> = {};
@@ -36,16 +36,22 @@ export default function HomeScreen() {
         <LanguageSelector />
       </View>
 
+      <View style={styles.speakingCard}>
+        <Text style={styles.speakingCardTitle}>Speaking time today</Text>
+        <Text style={styles.speakingCardValue}>
+          {Math.floor(todayUsageSeconds / 60)}:{String(todayUsageSeconds % 60).padStart(2, '0')}
+          {plan === 'free' ? ` / ${Math.floor(freeLimitSeconds / 60)}:00 limit` : ''}
+        </Text>
+        <Text style={styles.speakingCardSubtext}>
+          Time spent speaking on the Speak tab
+        </Text>
+      </View>
+
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Today's goal</Text>
         <Text style={styles.goalText}>
           Practice {dailyGoal} phrases today
         </Text>
-        {plan === 'free' && (
-          <Text style={styles.usageText}>
-            {Math.floor(todayUsageSeconds / 60)}:{String(todayUsageSeconds % 60).padStart(2, '0')} / 3:00 speaking today
-          </Text>
-        )}
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, { width: `${Math.min(100, (todayPhraseCount / dailyGoal) * 100)}%` }]} />
         </View>
@@ -119,6 +125,33 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#64748b',
   },
+  speakingCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  speakingCardTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748b',
+    marginBottom: 4,
+  },
+  speakingCardValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 4,
+  },
+  speakingCardSubtext: {
+    fontSize: 13,
+    color: '#94a3b8',
+  },
   card: {
     backgroundColor: '#fff',
     borderRadius: 16,
@@ -157,11 +190,6 @@ const styles = StyleSheet.create({
   progressText: {
     fontSize: 14,
     color: '#64748b',
-  },
-  usageText: {
-    fontSize: 12,
-    color: '#94a3b8',
-    marginTop: 4,
   },
   streakCard: {
     flexDirection: 'row',

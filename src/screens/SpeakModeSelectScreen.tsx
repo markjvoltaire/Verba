@@ -1,17 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { LanguageSelector } from '../components/LanguageSelector';
-import { useApp } from '../context/AppContext';
-
-const languageLabels: Record<string, string> = {
-  es: 'Spanish',
-  fr: 'French',
-  it: 'Italian',
-  en: 'English',
-};
 
 export default function SpeakModeSelectScreen({ navigation }: { navigation: any }) {
-  const { language } = useApp();
 
   return (
     <View style={styles.container}>
@@ -37,34 +28,6 @@ export default function SpeakModeSelectScreen({ navigation }: { navigation: any 
         <Text style={styles.optionTitle}>Lesson mode</Text>
         <Text style={styles.optionSubtitle}>
           Learn phrases and build vocabulary step by step
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.optionCard}
-        onPress={() => navigation.navigate('Scenario')}
-        activeOpacity={0.8}
-      >
-        <View style={styles.optionIconWrap}>
-          <Text style={styles.optionIcon}>🎭</Text>
-        </View>
-        <Text style={styles.optionTitle}>Role play</Text>
-        <Text style={styles.optionSubtitle}>
-          Practice real scenarios like ordering a meal in {languageLabels[language] || language}
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.optionCard}
-        onPress={() => navigation.navigate('StorySelect')}
-        activeOpacity={0.8}
-      >
-        <View style={styles.optionIconWrap}>
-          <Text style={styles.optionIcon}>📖</Text>
-        </View>
-        <Text style={styles.optionTitle}>Story mode</Text>
-        <Text style={styles.optionSubtitle}>
-          Listen to stories read aloud with captions so you can read along
         </Text>
       </TouchableOpacity>
       </ScrollView>

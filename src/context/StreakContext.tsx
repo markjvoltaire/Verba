@@ -18,6 +18,7 @@ interface StreakContextType {
   dailyGoal: number;
   practiceDates: string[];
   recordPhrasePractice: () => Promise<void>;
+  recordPhrasesPracticed: (count: number) => Promise<void>;
   recordPracticeDate: () => Promise<void>;
   loadStreakData: () => Promise<void>;
 }
@@ -123,6 +124,57 @@ export function StreakProvider({ children }: { children: React.ReactNode }) {
     if (datesToStore) setPracticeDates(datesToStore);
   }, []);
 
+  const recordPhrasesPracticed = useCallback(async (count: number) => {
+    if (count <= 0) return;
+    const today = todayString();
+    const yesterday = yesterdayString();
+
+    const [streakJson] = await Promise.all([
+      AsyncStorage.getItem(STREAK_KEY),
+      AsyncStorage.getItem(DAILY_COUNT_KEY),
+      AsyncStorage.getItem(DAILY_DATE_KEY),
+    ]);
+
+    let newStreak = 0;
+    let lastDate: string | null = null;
+    if (streakJson) {
+      const data: StreakData = JSON.parse(streakJson);
+      newStreak = data.currentStreak;
+      lastDate = data.lastPracticeDate;
+    }
+
+    if (lastDate === today) {
+      // Already practiced today, streak unchanged
+    } else if (lastDate === yesterday) {
+      newStreak += 1;
+    } else if (lastDate === null || lastDate < yesterday) {
+      newStreak = 1;
+    }
+    lastDate = today;
+
+    const storedDate = await AsyncStorage.getItem(DAILY_DATE_KEY);
+    const storedCount = parseInt((await AsyncStorage.getItem(DAILY_COUNT_KEY)) || '0', 10);
+    const newCount = storedDate === today ? storedCount + count : count;
+
+    const datesJson = await AsyncStorage.getItem(PRACTICE_DATES_KEY);
+    const dates: string[] = datesJson ? JSON.parse(datesJson) : [];
+    const datesToStore =
+      Array.isArray(dates) && !dates.includes(today)
+        ? [...dates, today].sort().slice(-MAX_PRACTICE_DATES)
+        : null;
+
+    await Promise.all([
+      AsyncStorage.setItem(STREAK_KEY, JSON.stringify({ currentStreak: newStreak, lastPracticeDate: lastDate })),
+      AsyncStorage.setItem(DAILY_COUNT_KEY, String(newCount)),
+      AsyncStorage.setItem(DAILY_DATE_KEY, today),
+      ...(datesToStore ? [AsyncStorage.setItem(PRACTICE_DATES_KEY, JSON.stringify(datesToStore))] : []),
+    ]);
+
+    setStreak(newStreak);
+    setTodayPhraseCount(newCount);
+    if (datesToStore) setPracticeDates(datesToStore);
+  }, []);
+
   const recordPracticeDate = useCallback(async () => {
     const today = todayString();
     try {
@@ -150,6 +202,7 @@ export function StreakProvider({ children }: { children: React.ReactNode }) {
         dailyGoal,
         practiceDates,
         recordPhrasePractice,
+        recordPhrasesPracticed,
         recordPracticeDate,
         loadStreakData,
       }}

@@ -30,6 +30,8 @@ import { evaluateSpeech } from "../api/speech";
 import { getFeedbackPhrases } from "../constants/feedbackPhrases";
 import { useApp } from "../context/AppContext";
 import { useSavedPhrases } from "../context/SavedPhrasesContext";
+import { useStreak } from "../context/StreakContext";
+import { useUsage } from "../context/UsageContext";
 
 const GOOD_JOB_SOUND = require("../../assets/sound/Verba-GoodJob.wav");
 const TRY_AGAIN_SOUND = require("../../assets/sound/Verba-TryAgain.wav");
@@ -84,6 +86,8 @@ export default function PracticeScreen({
     isInFlashcards,
     getFlashcardForPhrase,
   } = useSavedPhrases();
+  const { recordUsage } = useUsage();
+  const { recordPhrasesPracticed } = useStreak();
   const scenario = route.params?.scenario ?? "";
   const difficulty = route.params?.difficulty ?? "medium";
   const lessonLabel = LESSON_LABELS[scenario] ?? scenario;
@@ -147,6 +151,7 @@ export default function PracticeScreen({
   const phraseIndexRef = useRef(0);
   const hasStartedIntroRef = useRef(false);
   const phraseCacheRef = useRef<{ text: string; fileUri: string; index: number } | null>(null);
+  const recordStartTimeRef = useRef<number | null>(null);
   phraseIndexRef.current = phraseIndex;
 
   const phrase = phrases[phraseIndex];
@@ -436,7 +441,7 @@ export default function PracticeScreen({
     [phrases, targetLang, queueTts, playNextInQueue],
   );
 
-  const handleContinue = useCallback(() => {
+  const handleContinue = useCallback(async () => {
     const next = phraseIndex + 1;
     if (next < phrases.length) {
       setPhraseIndex(next);
@@ -444,9 +449,10 @@ export default function PracticeScreen({
       setPhase("prompt");
       playPromptForPhrase(next);
     } else {
+      await recordPhrasesPracticed(phrases.length);
       setPhase("complete");
     }
-  }, [phraseIndex, phrases.length, playPromptForPhrase]);
+  }, [phraseIndex, phrases.length, playPromptForPhrase, recordPhrasesPracticed]);
 
   const handleFlashcardsToggle = useCallback(async () => {
     if (!phrase) return;
@@ -512,6 +518,7 @@ export default function PracticeScreen({
         shouldRouteThroughEarpiece: false,
       });
       await audioRecorder.prepareToRecordAsync();
+      recordStartTimeRef.current = Date.now();
       audioRecorder.record();
     } catch (err) {
       console.error("Failed to start recording:", err);
@@ -531,6 +538,11 @@ export default function PracticeScreen({
       const base64 = await FileSystem.readAsStringAsync(uri, {
         encoding: "base64",
       });
+      if (recordStartTimeRef.current != null) {
+        const seconds = Math.ceil((Date.now() - recordStartTimeRef.current) / 1000);
+        await recordUsage(seconds);
+        recordStartTimeRef.current = null;
+      }
       const result = await evaluateSpeech(base64, phrase!.phrase);
       setFeedback(result);
       if (result.score >= SCORE_THRESHOLD) {
@@ -543,10 +555,6 @@ export default function PracticeScreen({
         }
       } else {
         setPhase("incorrect");
-        onTtsCompleteRef.current = () => {
-          setPhase("prompt");
-          playPromptForPhrase(phraseIndexRef.current);
-        };
         if (tryAgainUri) {
           playTryAgainSound();
         } else {
@@ -692,6 +700,11 @@ export default function PracticeScreen({
             <View style={styles.feedbackSection}>
               {feedback.score >= SCORE_THRESHOLD ? (
                 <>
+                  {feedback.transcription ? (
+                    <Text style={styles.feedbackHeard}>
+                      Heard: "{feedback.transcription}"
+                    </Text>
+                  ) : null}
                   <Text style={styles.feedbackCorrect}>
                     {feedbackPhrases.correct}
                   </Text>
@@ -701,11 +714,15 @@ export default function PracticeScreen({
                 </>
               ) : (
                 <>
+                  {feedback.transcription ? (
+                    <Text style={styles.feedbackHeard}>
+                      Heard: "{feedback.transcription}"
+                    </Text>
+                  ) : null}
                   <Text style={styles.feedbackIncorrect}>{feedback.feedback}</Text>
                   <Text style={styles.feedbackScore}>
                     Score: {feedback.score}/100
                   </Text>
-                  <Text style={styles.tryAgainHint}>{feedbackPhrases.tryAgain}</Text>
                 </>
               )}
             </View>
@@ -755,9 +772,13 @@ export default function PracticeScreen({
             <Pressable
               onPressIn={handlePressIn}
               onPressOut={handlePressOut}
+              disabled={ttsPlaying || replayLoading}
               style={[
                 styles.holdButtonWrapper,
-                { transform: [{ scale: buttonScale }] },
+                {
+                  transform: [{ scale: buttonScale }],
+                  opacity: ttsPlaying || replayLoading ? 0.5 : 1,
+                },
               ]}
             >
               <View style={styles.holdButton} />
@@ -805,6 +826,23 @@ export default function PracticeScreen({
               <Text style={styles.continueButtonText}>Continue</Text>
             </TouchableOpacity>
           </View>
+        </View>
+      )}
+
+      {phase === "incorrect" && phrase && (
+        <View
+          style={[styles.bottomSection, { paddingBottom: insets.bottom + 32 }]}
+        >
+          <TouchableOpacity
+            style={styles.continueButton}
+            onPress={() => {
+              setPhase("prompt");
+              playPromptForPhrase(phraseIndexRef.current);
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.continueButtonText}>Try again</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -961,6 +999,13 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "700",
     color: "#00877B",
+  },
+  feedbackHeard: {
+    fontSize: 15,
+    color: "#64748b",
+    textAlign: "center",
+    fontStyle: "italic",
+    marginBottom: 8,
   },
   feedbackIncorrect: {
     fontSize: 18,

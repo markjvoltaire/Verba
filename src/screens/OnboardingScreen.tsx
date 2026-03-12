@@ -19,11 +19,11 @@ import { useApp } from '../context/AppContext';
 import type { Language, LanguageLevel, Gender, AgeRange, OnboardingProfile } from '../context/AppContext';
 import WaveLogo from '../components/WaveLogo';
 
-const LANGUAGES: { code: Language; label: string }[] = [
-  { code: 'es', label: 'Spanish' },
-  { code: 'fr', label: 'French' },
-  { code: 'it', label: 'Italian' },
-  { code: 'en', label: 'English' },
+const LANGUAGES: { code: Language; label: string; flag: string }[] = [
+  { code: 'es', label: 'Spanish', flag: '🇪🇸' },
+  { code: 'fr', label: 'French', flag: '🇫🇷' },
+  { code: 'it', label: 'Italian', flag: '🇮🇹' },
+  { code: 'en', label: 'English', flag: '🇺🇸' },
 ];
 
 const LEVELS: { value: LanguageLevel; label: string }[] = [
@@ -286,13 +286,14 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
         return (
           <>
             <Text style={styles.title}>What language are you learning?</Text>
-            {LANGUAGES.map(({ code, label }) => (
+            {LANGUAGES.map(({ code, label, flag }) => (
               <TouchableOpacity
                 key={code}
                 style={[styles.option, learningLanguage === code && styles.optionSelected]}
                 onPress={() => setLearningLanguage(code)}
                 activeOpacity={0.7}
               >
+                <Text style={styles.optionFlag}>{flag}</Text>
                 <Text style={[styles.optionText, learningLanguage === code && styles.optionTextSelected]}>{label}</Text>
               </TouchableOpacity>
             ))}
@@ -346,13 +347,14 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
         return (
           <>
             <Text style={styles.title}>What is your native language?</Text>
-            {LANGUAGES.map(({ code, label }) => (
+            {LANGUAGES.map(({ code, label, flag }) => (
               <TouchableOpacity
                 key={code}
                 style={[styles.option, nativeLanguage === code && styles.optionSelected]}
                 onPress={() => setNativeLanguage(code)}
                 activeOpacity={0.7}
               >
+                <Text style={styles.optionFlag}>{flag}</Text>
                 <Text style={[styles.optionText, nativeLanguage === code && styles.optionTextSelected]}>{label}</Text>
               </TouchableOpacity>
             ))}
@@ -562,6 +564,8 @@ const styles = StyleSheet.create({
     borderColor: '#e2e8f0',
   },
   option: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 18,
@@ -573,11 +577,14 @@ const styles = StyleSheet.create({
     borderColor: '#00877B',
     backgroundColor: '#e6f7f6',
   },
+  optionFlag: {
+    fontSize: 24,
+    marginRight: 12,
+  },
   optionText: {
     fontSize: 18,
     fontWeight: '600',
     color: '#0f172a',
-    textAlign: 'center',
   },
   optionTextSelected: {
     color: '#00877B',
