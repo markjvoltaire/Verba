@@ -9,10 +9,7 @@ import {
   Animated,
   ActivityIndicator,
 } from "react-native";
-import {
-  useAudioPlayer,
-  setAudioModeAsync,
-} from "expo-audio";
+import { useAudioPlayer, setAudioModeAsync } from "expo-audio";
 import { getSpeechStreamUrl } from "../api/tts";
 import { useApp } from "../context/AppContext";
 import { useSavedPhrases } from "../context/SavedPhrasesContext";
@@ -24,6 +21,16 @@ const TTS_LANG: Record<string, string> = {
   it: "it",
   en: "en",
 };
+
+type PhraseFilter = "all" | "es" | "fr" | "it" | "en";
+
+const PHRASE_FILTERS: { value: PhraseFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "es", label: "Spanish" },
+  { value: "fr", label: "French" },
+  { value: "it", label: "Italian" },
+  { value: "en", label: "English" },
+];
 
 const FLIP_DURATION = 400;
 
@@ -50,7 +57,9 @@ function FlipCard({
 }) {
   const frontText = showTranslationFirst ? translation : phrase;
   const backText = showTranslationFirst ? phrase : translation;
-  const frontHint = showTranslationFirst ? "Tap to reveal phrase" : "Tap to reveal translation";
+  const frontHint = showTranslationFirst
+    ? "Tap to reveal phrase"
+    : "Tap to reveal translation";
   const flipAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -156,10 +165,16 @@ function FlipCard({
 export default function FlashcardsScreen() {
   const { language } = useApp();
   const { getFlashcards, removeFromFlashcards } = useSavedPhrases();
-  const flashcards = getFlashcards();
+  const allFlashcards = getFlashcards();
+  const [phraseFilter, setPhraseFilter] = useState<PhraseFilter>("all");
   const [flippedId, setFlippedId] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const { width } = useWindowDimensions();
+
+  const flashcards =
+    phraseFilter === "all"
+      ? allFlashcards
+      : allFlashcards.filter((c) => c.phrase.target_lang === phraseFilter);
 
   useEffect(() => {
     setAudioModeAsync({ playsInSilentMode: true });
@@ -173,8 +188,9 @@ export default function FlashcardsScreen() {
       ? playingCard.phrase.translation
       : playingCard.phrase.phrase
     : null;
+  const playLang = playingCard?.phrase.target_lang ?? language;
   const ttsUri = playText
-    ? getSpeechStreamUrl(playText, "marin", TTS_LANG[language] || language)
+    ? getSpeechStreamUrl(playText, "marin", TTS_LANG[playLang] || playLang)
     : null;
 
   const player = useAudioPlayer(ttsUri ? { uri: ttsUri } : null);
@@ -208,7 +224,7 @@ export default function FlashcardsScreen() {
     if (flippedId === id) setFlippedId(null);
   };
 
-  if (flashcards.length === 0) {
+  if (allFlashcards.length === 0) {
     return (
       <View style={styles.container}>
         <Text style={styles.title}>Flashcards</Text>
@@ -230,25 +246,57 @@ export default function FlashcardsScreen() {
         {flashcards.length} phrase{flashcards.length !== 1 ? "s" : ""} saved
       </Text>
       <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.pillsRow}
+        style={styles.pillsScroll}
       >
-        {flashcards.map((card) => (
-          <FlipCard
-            key={card.id}
-            isFlipped={flippedId === card.id}
-            onFlip={() => handleFlip(card.id)}
-            phrase={card.phrase.phrase}
-            translation={card.phrase.translation}
-            showTranslationFirst={card.phrase.id.startsWith("translation_")}
-            onPlay={() => handlePlay(card.id)}
-            onRemove={() => handleRemove(card.id)}
-            isLoading={playingId === card.id}
-            cardWidth={width - 48}
-          />
-        ))}
+        {PHRASE_FILTERS.map(({ value, label }) => {
+          const isSelected = phraseFilter === value;
+          return (
+            <TouchableOpacity
+              key={value}
+              style={[styles.pill, isSelected && styles.pillSelected]}
+              onPress={() => setPhraseFilter(value)}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[styles.pillText, isSelected && styles.pillTextSelected]}
+              >
+                {label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
+      {flashcards.length === 0 ? (
+        <View style={styles.filterEmpty}>
+          <Text style={styles.filterEmptyText}>
+            No flashcards for this language
+          </Text>
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {flashcards.map((card) => (
+            <FlipCard
+              key={card.id}
+              isFlipped={flippedId === card.id}
+              onFlip={() => handleFlip(card.id)}
+              phrase={card.phrase.phrase}
+              translation={card.phrase.translation}
+              showTranslationFirst={card.phrase.id.startsWith("translation_")}
+              onPlay={() => handlePlay(card.id)}
+              onRemove={() => handleRemove(card.id)}
+              isLoading={playingId === card.id}
+              cardWidth={width - 48}
+            />
+          ))}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -270,7 +318,55 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#64748b",
     paddingHorizontal: 24,
-    marginBottom: 20,
+    marginBottom: 12,
+  },
+  pillsScroll: {
+    marginBottom: 16,
+    marginHorizontal: -24,
+    flexGrow: 0,
+    flexShrink: 0,
+    alignSelf: "flex-start",
+    paddingHorizontal: 24,
+  },
+  pillsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 24,
+    paddingVertical: 6,
+    paddingRight: 48,
+  },
+  pill: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#fff",
+    borderWidth: 1.5,
+    borderColor: "#e2e8f0",
+    alignSelf: "flex-start",
+  },
+  pillSelected: {
+    backgroundColor: "#00877B",
+    borderColor: "#00877B",
+  },
+  pillText: {
+    fontSize: 15,
+    fontWeight: "600",
+    lineHeight: 22,
+    color: "#64748b",
+  },
+  pillTextSelected: {
+    color: "#fff",
+  },
+  filterEmpty: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 48,
+  },
+  filterEmptyText: {
+    fontSize: 16,
+    color: "#64748b",
   },
   scroll: {
     flex: 1,

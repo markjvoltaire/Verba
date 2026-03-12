@@ -8,7 +8,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { Text, View } from 'react-native';
 import WaveLogo from '../components/WaveLogo';
-import HomeScreen from '../screens/HomeScreen';
+import ProgressScreen from '../screens/ProgressScreen';
 import PracticeScreen from '../screens/PracticeScreen';
 import PhrasePracticeScreen from '../screens/PhrasePracticeScreen';
 import GlossaryScreen from '../screens/GlossaryScreen';
@@ -52,7 +52,7 @@ function SpeakStackScreen() {
 function ProgressStackScreen() {
   return (
     <ProgressStack.Navigator screenOptions={{ headerShown: false }}>
-      <ProgressStack.Screen name="ProgressHome" component={HomeScreen} />
+      <ProgressStack.Screen name="ProgressHome" component={ProgressScreen} />
       <ProgressStack.Screen name="Scenarios" component={ScenarioScreen} />
     </ProgressStack.Navigator>
   );

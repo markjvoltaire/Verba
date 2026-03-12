@@ -1,54 +1,74 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-} from 'react-native';
-import { LanguageSelector } from '../components/LanguageSelector';
+} from "react-native";
+import { LanguageSelector } from "../components/LanguageSelector";
 
-const LESSONS: Record<string, { id: string; title: string; subtitle: string; icon: string }[]> = {
+const LESSONS: Record<
+  string,
+  { id: string; title: string; subtitle: string; icon: string }[]
+> = {
   easy: [
-    { id: 'small_talk', title: 'First connection', subtitle: 'Greetings & basics', icon: '👋' },
+    {
+      id: "small_talk",
+      title: "First connection",
+      subtitle: "Greetings & basics",
+      icon: "👋",
+    },
   ],
   medium: [
-    { id: 'restaurant', title: 'Ordering a meal', subtitle: 'Restaurant phrases', icon: '🍽️' },
+    {
+      id: "restaurant",
+      title: "Ordering a meal",
+      subtitle: "Restaurant phrases",
+      icon: "🍽️",
+    },
   ],
   hard: [
-    { id: 'airport', title: 'At the airport', subtitle: 'Travel', icon: '✈️' },
-    { id: 'hotel', title: 'At the hotel', subtitle: 'Check-in & stay', icon: '🏨' },
+    { id: "airport", title: "At the airport", subtitle: "Travel", icon: "✈️" },
+    {
+      id: "hotel",
+      title: "At the hotel",
+      subtitle: "Check-in & stay",
+      icon: "🏨",
+    },
   ],
 };
 
 const DIFFICULTIES = [
-  { id: 'easy', label: 'Easy' },
-  { id: 'medium', label: 'Medium' },
-  { id: 'hard', label: 'Hard' },
+  { id: "easy", label: "Easy" },
+  { id: "medium", label: "Medium" },
+  { id: "hard", label: "Hard" },
 ] as const;
 
-export type LessonId = 'small_talk' | 'restaurant' | 'airport' | 'hotel';
-export type DifficultyId = typeof DIFFICULTIES[number]['id'];
+export type LessonId = "small_talk" | "restaurant" | "airport" | "hotel";
+export type DifficultyId = (typeof DIFFICULTIES)[number]["id"];
 
 export default function LessonSelectScreen({
   navigation,
 }: {
   navigation: any;
 }) {
-  const [selectedDifficulty, setSelectedDifficulty] = useState<DifficultyId>('easy');
+  const [selectedDifficulty, setSelectedDifficulty] =
+    useState<DifficultyId>("easy");
   const [selectedLesson, setSelectedLesson] = useState<LessonId | null>(null);
 
   const availableLessons = LESSONS[selectedDifficulty] ?? [];
-  const effectiveLesson = selectedLesson && availableLessons.some((l) => l.id === selectedLesson)
-    ? selectedLesson
-    : availableLessons.length === 1
-      ? (availableLessons[0].id as LessonId)
-      : null;
+  const effectiveLesson =
+    selectedLesson && availableLessons.some((l) => l.id === selectedLesson)
+      ? selectedLesson
+      : availableLessons.length === 1
+        ? (availableLessons[0].id as LessonId)
+        : null;
 
   const handleStart = () => {
     const scenario = effectiveLesson ?? selectedLesson;
     if (!scenario) return;
-    navigation.navigate('PracticeList', {
+    navigation.navigate("PracticeList", {
       scenario,
       difficulty: selectedDifficulty,
     });
@@ -111,7 +131,10 @@ export default function LessonSelectScreen({
           return (
             <TouchableOpacity
               key={lesson.id}
-              style={[styles.lessonCard, isSelected && styles.lessonCardSelected]}
+              style={[
+                styles.lessonCard,
+                isSelected && styles.lessonCardSelected,
+              ]}
               onPress={() => setSelectedLesson(lesson.id as LessonId)}
               activeOpacity={0.8}
             >
@@ -124,7 +147,10 @@ export default function LessonSelectScreen({
       </View>
 
       <TouchableOpacity
-        style={[styles.startButton, !effectiveLesson && styles.startButtonDisabled]}
+        style={[
+          styles.startButton,
+          !effectiveLesson && styles.startButtonDisabled,
+        ]}
         onPress={handleStart}
         disabled={!effectiveLesson}
       >
@@ -137,7 +163,7 @@ export default function LessonSelectScreen({
 const styles = StyleSheet.create({
   scroll: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: "#f8fafc",
   },
   container: {
     padding: 24,
@@ -145,9 +171,9 @@ const styles = StyleSheet.create({
     paddingBottom: 48,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 24,
   },
   headerSpacer: {
@@ -155,51 +181,51 @@ const styles = StyleSheet.create({
   },
   backText: {
     fontSize: 16,
-    color: '#00877B',
-    fontWeight: '600',
+    color: "#00877B",
+    fontWeight: "600",
   },
   title: {
     fontSize: 26,
-    fontWeight: '700',
-    color: '#0f172a',
+    fontWeight: "700",
+    color: "#0f172a",
     marginBottom: 6,
   },
   subtitle: {
     fontSize: 16,
-    color: '#64748b',
+    color: "#64748b",
     marginBottom: 24,
   },
   sectionLabel: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#64748b',
+    fontWeight: "600",
+    color: "#64748b",
     marginBottom: 12,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   lessonGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 12,
     marginBottom: 28,
   },
   lessonCard: {
-    width: '48%',
+    width: "48%",
     minWidth: 140,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 14,
     padding: 16,
     borderWidth: 2,
-    borderColor: 'transparent',
-    shadowColor: '#000',
+    borderColor: "transparent",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 2,
   },
   lessonCardSelected: {
-    borderColor: '#00877B',
-    backgroundColor: '#eff6ff',
+    borderColor: "#00877B",
+    backgroundColor: "#eff6ff",
   },
   lessonIcon: {
     fontSize: 28,
@@ -207,16 +233,16 @@ const styles = StyleSheet.create({
   },
   lessonTitle: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#0f172a',
+    fontWeight: "700",
+    color: "#0f172a",
     marginBottom: 2,
   },
   lessonSubtitle: {
     fontSize: 13,
-    color: '#64748b',
+    color: "#64748b",
   },
   difficultyRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
     marginBottom: 32,
   },
@@ -224,35 +250,35 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
-    backgroundColor: '#fff',
-    alignItems: 'center',
+    backgroundColor: "#fff",
+    alignItems: "center",
     borderWidth: 2,
-    borderColor: '#e2e8f0',
+    borderColor: "#e2e8f0",
   },
   difficultyOptionSelected: {
-    borderColor: '#00877B',
-    backgroundColor: '#eff6ff',
+    borderColor: "#00877B",
+    backgroundColor: "#eff6ff",
   },
   difficultyLabel: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#64748b',
+    fontWeight: "600",
+    color: "#64748b",
   },
   difficultyLabelSelected: {
-    color: '#00877B',
+    color: "#00877B",
   },
   startButton: {
-    backgroundColor: '#00877B',
+    backgroundColor: "#00877B",
     borderRadius: 14,
     paddingVertical: 18,
-    alignItems: 'center',
+    alignItems: "center",
   },
   startButtonDisabled: {
-    backgroundColor: '#94a3b8',
+    backgroundColor: "#94a3b8",
   },
   startButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 });

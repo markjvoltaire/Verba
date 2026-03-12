@@ -87,7 +87,7 @@ export default function PhrasePracticeScreen({
   const handleListen = () => {
     if (!phrase) return;
     Speech.speak(phrase.phrase, {
-      language: phrase.target_lang === 'es' ? 'es-ES' : phrase.target_lang,
+      language: { es: 'es-ES', fr: 'fr-FR', it: 'it-IT', en: 'en-US' }[phrase.target_lang] ?? phrase.target_lang,
       rate: 0.9,
     });
   };

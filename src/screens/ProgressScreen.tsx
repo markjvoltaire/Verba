@@ -1,15 +1,32 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Pressable } from 'react-native';
 import { Calendar } from 'react-native-calendars';
-import { useApp } from '../context/AppContext';
+import { useApp, type Language } from '../context/AppContext';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { useStreak } from '../context/StreakContext';
 import { useUsage } from '../context/UsageContext';
 
-export default function HomeScreen() {
-  const { language } = useApp();
+const NATIVE_LANGUAGES: { code: Language; label: string; flag: string }[] = [
+  { code: 'es', label: 'Spanish', flag: '🇪🇸' },
+  { code: 'fr', label: 'French', flag: '🇫🇷' },
+  { code: 'it', label: 'Italian', flag: '🇮🇹' },
+  { code: 'en', label: 'English', flag: '🇬🇧' },
+];
+
+export default function ProgressScreen() {
+  const { language, onboardingProfile, setNativeLanguage } = useApp();
   const { streak, todayPhraseCount, dailyGoal, practiceDates } = useStreak();
   const { canPractice, todayUsageSeconds, plan, freeLimitSeconds } = useUsage();
+  const [nativeLangModalVisible, setNativeLangModalVisible] = useState(false);
+
+  const nativeLang = onboardingProfile?.nativeLanguage ?? 'en';
+  const nativeLangLabel = NATIVE_LANGUAGES.find((l) => l.code === nativeLang)?.label ?? 'English';
+  const nativeLangFlag = NATIVE_LANGUAGES.find((l) => l.code === nativeLang)?.flag ?? '🇬🇧';
+
+  const handleSelectNativeLanguage = async (code: Language) => {
+    await setNativeLanguage(code);
+    setNativeLangModalVisible(false);
+  };
 
   const markedDates = useMemo(() => {
     const marked: Record<string, { marked: boolean; dotColor?: string }> = {};
@@ -30,11 +47,58 @@ export default function HomeScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.title}>Verba</Text>
+          <Text style={styles.title}>Progress</Text>
           <Text style={styles.subtitle}>Practice speaking {languageLabels[language] || language}</Text>
         </View>
         <LanguageSelector />
       </View>
+
+      <TouchableOpacity
+        style={styles.nativeLangRow}
+        onPress={() => setNativeLangModalVisible(true)}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.nativeLangLabel}>My language</Text>
+        <View style={styles.nativeLangValue}>
+          <Text style={styles.nativeLangFlag}>{nativeLangFlag}</Text>
+          <Text style={styles.nativeLangText}>{nativeLangLabel}</Text>
+          <Text style={styles.nativeLangChevron}>▼</Text>
+        </View>
+      </TouchableOpacity>
+
+      <Modal
+        visible={nativeLangModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setNativeLangModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setNativeLangModalVisible(false)}
+        >
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>My language</Text>
+            <Text style={styles.modalSubtitle}>Language used for instructions and feedback</Text>
+            {NATIVE_LANGUAGES.map(({ code, label, flag }) => (
+              <TouchableOpacity
+                key={code}
+                style={[styles.modalOption, nativeLang === code && styles.modalOptionSelected]}
+                onPress={() => handleSelectNativeLanguage(code)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.modalOptionFlag}>{flag}</Text>
+                <Text style={styles.modalOptionLabel}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={styles.modalCancel}
+              onPress={() => setNativeLangModalVisible(false)}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <View style={styles.speakingCard}>
         <Text style={styles.speakingCardTitle}>Speaking time today</Text>
@@ -122,6 +186,97 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   subtitle: {
+    fontSize: 16,
+    color: '#64748b',
+  },
+  nativeLangRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  nativeLangLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#0f172a',
+  },
+  nativeLangValue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  nativeLangFlag: {
+    fontSize: 20,
+  },
+  nativeLangText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#0f172a',
+  },
+  nativeLangChevron: {
+    fontSize: 10,
+    color: '#64748b',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 320,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#64748b',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  modalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 8,
+    gap: 12,
+  },
+  modalOptionSelected: {
+    backgroundColor: '#e6f7f6',
+  },
+  modalOptionFlag: {
+    fontSize: 24,
+  },
+  modalOptionLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#0f172a',
+  },
+  modalCancel: {
+    marginTop: 16,
+    padding: 16,
+    alignItems: 'center',
+  },
+  modalCancelText: {
     fontSize: 16,
     color: '#64748b',
   },

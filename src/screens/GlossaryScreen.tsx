@@ -31,6 +31,16 @@ const TTS_LANG: Record<string, string> = {
   en: "en",
 };
 
+type PhraseFilter = "all" | "es" | "fr" | "it" | "en";
+
+const PHRASE_FILTERS: { value: PhraseFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "es", label: "Spanish" },
+  { value: "fr", label: "French" },
+  { value: "it", label: "Italian" },
+  { value: "en", label: "English" },
+];
+
 const WAVEFORM_BAR_COUNT = 8;
 const WAVEFORM_UPDATE_MS = 50;
 
@@ -65,6 +75,7 @@ export default function GlossaryScreen() {
   } = useSavedPhrases();
   const [phrases, setPhrases] = useState<Phrase[]>([]);
   const [phrasesLoading, setPhrasesLoading] = useState(true);
+  const [phraseFilter, setPhraseFilter] = useState<PhraseFilter>("all");
   const [inputText, setInputText] = useState("");
   const [translation, setTranslation] = useState("");
   const [translating, setTranslating] = useState(false);
@@ -189,7 +200,7 @@ export default function GlossaryScreen() {
     ? getSpeechStreamUrl(
         playingPhrase.phrase,
         "marin",
-        TTS_LANG[language] || language,
+        TTS_LANG[playingPhrase.target_lang] || playingPhrase.target_lang,
       )
     : null;
   const playSourceUrl =
@@ -278,11 +289,13 @@ export default function GlossaryScreen() {
 
   useEffect(() => {
     setPhrasesLoading(true);
-    getPhrases(language, undefined, 100)
+    const lang = phraseFilter === "all" ? undefined : phraseFilter;
+    const limit = phraseFilter === "all" ? 250 : 100;
+    getPhrases(lang, undefined, undefined, limit)
       .then(setPhrases)
       .catch(() => setPhrases([]))
       .finally(() => setPhrasesLoading(false));
-  }, [language]);
+  }, [phraseFilter]);
 
   useEffect(() => {
     if (playingTTS && player) {
@@ -585,6 +598,31 @@ export default function GlossaryScreen() {
           </TouchableOpacity>
         </Animated.View>
 
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.pillsRow}
+          style={styles.pillsScroll}
+        >
+          {PHRASE_FILTERS.map(({ value, label }) => {
+            const isSelected = phraseFilter === value;
+            return (
+              <TouchableOpacity
+                key={value}
+                style={[styles.pill, isSelected && styles.pillSelected]}
+                onPress={() => setPhraseFilter(value)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[styles.pillText, isSelected && styles.pillTextSelected]}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
         <Text style={styles.phrasesSectionLabel}>Top phrases</Text>
       </View>
 
@@ -603,7 +641,9 @@ export default function GlossaryScreen() {
           />
         ) : phrases.length === 0 ? (
           <Text style={styles.phrasesEmpty}>
-            No phrases for this language yet
+            {phraseFilter === "all"
+              ? "No phrases yet"
+              : "No phrases for this language yet"}
           </Text>
         ) : (
           phrases.map((phrase) => (
@@ -625,6 +665,42 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 16,
     backgroundColor: "#f8fafc",
+  },
+  pillsScroll: {
+    marginBottom: 16,
+    marginHorizontal: -24,
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  pillsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 24,
+    paddingVertical: 6,
+    paddingRight: 48,
+  },
+  pill: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#fff",
+    borderWidth: 1.5,
+    borderColor: "#e2e8f0",
+    alignSelf: "flex-start",
+  },
+  pillSelected: {
+    backgroundColor: "#00877B",
+    borderColor: "#00877B",
+  },
+  pillText: {
+    fontSize: 15,
+    fontWeight: "600",
+    lineHeight: 22,
+    color: "#64748b",
+  },
+  pillTextSelected: {
+    color: "#fff",
   },
   phrasesScroll: {
     flex: 1,

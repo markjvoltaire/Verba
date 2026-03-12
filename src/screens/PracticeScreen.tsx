@@ -228,7 +228,7 @@ export default function PracticeScreen({
     if (scenario) {
       hasStartedIntroRef.current = false;
       Promise.all([
-        getPhrases(language, scenario),
+        getPhrases(language, scenario, difficulty),
         getLessonIntro(scenario, nativeLang, targetLang),
       ])
         .then(([phrasesData, introData]) => {
@@ -241,7 +241,7 @@ export default function PracticeScreen({
           Alert.alert("Error", "Could not load lesson. Please try again.");
         });
     }
-  }, [scenario, language, nativeLang, targetLang]);
+  }, [scenario, difficulty, language, nativeLang, targetLang]);
 
   useEffect(() => {
     (async () => {
