@@ -11,13 +11,14 @@
       "resizeMode": "contain",
       "backgroundColor": "#21929d"
     },
-"ios": {
-  "supportsTablet": true,
-  "bundleIdentifier": "com.markjvoltaire.Verba",
-  "buildNumber": "6",
-  "infoPlist": {
-    "ITSAppUsesNonExemptEncryption": false
-  },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.markjvoltaire.Verba",
+      "buildNumber": "6",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#21929d",
