@@ -35,6 +35,7 @@ import { useUsage } from "../context/UsageContext";
 
 const GOOD_JOB_SOUND = require("../../assets/sound/Verba-GoodJob.wav");
 const TRY_AGAIN_SOUND = require("../../assets/sound/Verba-TryAgain.wav");
+const LESSON_LOADER_SOUND = require("../../assets/sound/LessonLoader1.wav");
 const CONFETTI_LOTTIE = require("../../assets/lottie/confetti.json");
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -44,6 +45,7 @@ const LESSON_LABELS: Record<string, string> = {
   restaurant: "Ordering a meal",
   airport: "At the airport",
   hotel: "At the hotel",
+  dating: "Dating",
 };
 
 const DIFFICULTY_LABELS: Record<string, string> = {
@@ -71,11 +73,27 @@ type Phase =
   | "incorrect"
   | "complete";
 
+function handleBack(navigation: { goBack: () => void; canGoBack?: () => boolean; navigate: (screen: string) => void }) {
+  if (navigation.canGoBack?.()) {
+    navigation.goBack();
+  } else {
+    navigation.navigate("LessonSelect");
+  }
+}
+
+function safePause(p: { pause?: () => void } | null | undefined) {
+  try {
+    p?.pause?.();
+  } catch {
+    // Native object may be disposed on unmount
+  }
+}
+
 export default function PracticeScreen({
   navigation,
   route,
 }: {
-  navigation: { goBack: () => void };
+  navigation: { goBack: () => void; canGoBack?: () => boolean; navigate: (screen: string) => void };
   route: { params?: { scenario?: string; difficulty?: string } };
 }) {
   const insets = useSafeAreaInsets();
@@ -87,7 +105,7 @@ export default function PracticeScreen({
     getFlashcardForPhrase,
   } = useSavedPhrases();
   const { recordUsage } = useUsage();
-  const { recordPhrasesPracticed } = useStreak();
+  const { recordPhrasePractice } = useStreak();
   const scenario = route.params?.scenario ?? "";
   const difficulty = route.params?.difficulty ?? "medium";
   const lessonLabel = LESSON_LABELS[scenario] ?? scenario;
@@ -115,6 +133,7 @@ export default function PracticeScreen({
   const [currentWordIndex, setCurrentWordIndex] = useState(-1);
   const [goodJobUri, setGoodJobUri] = useState<string | null>(null);
   const [tryAgainUri, setTryAgainUri] = useState<string | null>(null);
+  const [lessonLoaderUri, setLessonLoaderUri] = useState<string | null>(null);
 
   const promptOpacity = useRef(new Animated.Value(0)).current;
   const promptTranslateY = useRef(new Animated.Value(16)).current;
@@ -123,19 +142,24 @@ export default function PracticeScreen({
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const player = useAudioPlayer(ttsUri ? { uri: ttsUri } : null);
   const goodJobPlayer0 = useAudioPlayer(
-    goodJobUri ? { uri: goodJobUri } : null
+    goodJobUri ? { uri: goodJobUri } : null,
   );
   const goodJobPlayer1 = useAudioPlayer(
-    goodJobUri ? { uri: goodJobUri } : null
+    goodJobUri ? { uri: goodJobUri } : null,
   );
   const tryAgainPlayer0 = useAudioPlayer(
-    tryAgainUri ? { uri: tryAgainUri } : null
+    tryAgainUri ? { uri: tryAgainUri } : null,
   );
   const tryAgainPlayer1 = useAudioPlayer(
-    tryAgainUri ? { uri: tryAgainUri } : null
+    tryAgainUri ? { uri: tryAgainUri } : null,
+  );
+  const lessonLoaderPlayer = useAudioPlayer(
+    lessonLoaderUri ? { uri: lessonLoaderUri } : null,
   );
   const goodJobPlayIndexRef = useRef(0);
   const tryAgainPlayIndexRef = useRef(0);
+  const goodJobPlayerToPlayRef = useRef<{ play: () => void } | null>(null);
+  const tryAgainPlayerToPlayRef = useRef<{ play: () => void } | null>(null);
 
   useEffect(() => {
     Asset.loadAsync(GOOD_JOB_SOUND).then(([asset]) => {
@@ -144,13 +168,49 @@ export default function PracticeScreen({
     Asset.loadAsync(TRY_AGAIN_SOUND).then(([asset]) => {
       setTryAgainUri(asset.localUri ?? asset.uri);
     });
+    Asset.loadAsync(LESSON_LOADER_SOUND).then(([asset]) => {
+      setLessonLoaderUri(asset.localUri ?? asset.uri);
+    });
   }, []);
+
+  const showLoader =
+    phase === "loading" ||
+    (phase === "intro" && !ttsPlaying && intro != null);
+
+  useEffect(() => {
+    if (!lessonLoaderUri || !lessonLoaderPlayer) return;
+    if (showLoader) {
+      let cancelled = false;
+      setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+        shouldRouteThroughEarpiece: false,
+      }).then(() => {
+        if (!cancelled) {
+          lessonLoaderPlayer.loop = true;
+          lessonLoaderPlayer.seekTo(0);
+          lessonLoaderPlayer.play();
+        }
+      });
+      return () => {
+        cancelled = true;
+        safePause(lessonLoaderPlayer);
+      };
+    } else {
+      safePause(lessonLoaderPlayer);
+    }
+  }, [showLoader, lessonLoaderUri, lessonLoaderPlayer]);
+
   const ttsQueueRef = useRef<{ text: string; lang: string }[]>([]);
   const isPlayingRef = useRef(false);
   const onTtsCompleteRef = useRef<(() => void) | null>(null);
   const phraseIndexRef = useRef(0);
   const hasStartedIntroRef = useRef(false);
-  const phraseCacheRef = useRef<{ text: string; fileUri: string; index: number } | null>(null);
+  const phraseCacheRef = useRef<{
+    text: string;
+    fileUri: string;
+    index: number;
+  } | null>(null);
   const recordStartTimeRef = useRef<number | null>(null);
   phraseIndexRef.current = phraseIndex;
 
@@ -184,7 +244,7 @@ export default function PracticeScreen({
           toValue: 1,
           duration: 1500,
           useNativeDriver: true,
-        })
+        }),
       );
       loop.start();
       return () => loop.stop();
@@ -263,6 +323,9 @@ export default function PracticeScreen({
   useEffect(() => {
     if (!player || !ttsUri) return;
     const sub = player.addListener("playbackStatusUpdate", (status) => {
+      if (status.isLoaded && !status.playing && !status.didJustFinish) {
+        player.play();
+      }
       if (status.playing) {
         setTtsPlaying(true);
         setReplayLoading(false);
@@ -282,6 +345,15 @@ export default function PracticeScreen({
   useEffect(() => {
     if (!goodJobPlayer0 || !goodJobUri) return;
     const sub = goodJobPlayer0.addListener("playbackStatusUpdate", (status) => {
+      if (
+        goodJobPlayerToPlayRef.current === goodJobPlayer0 &&
+        status.isLoaded &&
+        !status.playing &&
+        !status.didJustFinish
+      ) {
+        goodJobPlayer0.play();
+        goodJobPlayerToPlayRef.current = null;
+      }
       if (status.playing) setTtsPlaying(true);
       if (status.didJustFinish) setTtsPlaying(false);
     });
@@ -291,6 +363,15 @@ export default function PracticeScreen({
   useEffect(() => {
     if (!goodJobPlayer1 || !goodJobUri) return;
     const sub = goodJobPlayer1.addListener("playbackStatusUpdate", (status) => {
+      if (
+        goodJobPlayerToPlayRef.current === goodJobPlayer1 &&
+        status.isLoaded &&
+        !status.playing &&
+        !status.didJustFinish
+      ) {
+        goodJobPlayer1.play();
+        goodJobPlayerToPlayRef.current = null;
+      }
       if (status.playing) setTtsPlaying(true);
       if (status.didJustFinish) setTtsPlaying(false);
     });
@@ -299,44 +380,62 @@ export default function PracticeScreen({
 
   useEffect(() => {
     if (!tryAgainPlayer0 || !tryAgainUri) return;
-    const sub = tryAgainPlayer0.addListener("playbackStatusUpdate", (status) => {
-      if (status.playing) setTtsPlaying(true);
-      if (status.didJustFinish) {
-        setTtsPlaying(false);
-        onTtsCompleteRef.current?.();
-        onTtsCompleteRef.current = null;
-      }
-    });
+    const sub = tryAgainPlayer0.addListener(
+      "playbackStatusUpdate",
+      (status) => {
+        if (
+          tryAgainPlayerToPlayRef.current === tryAgainPlayer0 &&
+          status.isLoaded &&
+          !status.playing &&
+          !status.didJustFinish
+        ) {
+          tryAgainPlayer0.play();
+          tryAgainPlayerToPlayRef.current = null;
+        }
+        if (status.playing) setTtsPlaying(true);
+        if (status.didJustFinish) {
+          setTtsPlaying(false);
+          onTtsCompleteRef.current?.();
+          onTtsCompleteRef.current = null;
+        }
+      },
+    );
     return () => sub.remove();
   }, [tryAgainPlayer0, tryAgainUri]);
 
   useEffect(() => {
     if (!tryAgainPlayer1 || !tryAgainUri) return;
-    const sub = tryAgainPlayer1.addListener("playbackStatusUpdate", (status) => {
-      if (status.playing) setTtsPlaying(true);
-      if (status.didJustFinish) {
-        setTtsPlaying(false);
-        onTtsCompleteRef.current?.();
-        onTtsCompleteRef.current = null;
-      }
-    });
+    const sub = tryAgainPlayer1.addListener(
+      "playbackStatusUpdate",
+      (status) => {
+        if (
+          tryAgainPlayerToPlayRef.current === tryAgainPlayer1 &&
+          status.isLoaded &&
+          !status.playing &&
+          !status.didJustFinish
+        ) {
+          tryAgainPlayer1.play();
+          tryAgainPlayerToPlayRef.current = null;
+        }
+        if (status.playing) setTtsPlaying(true);
+        if (status.didJustFinish) {
+          setTtsPlaying(false);
+          onTtsCompleteRef.current?.();
+          onTtsCompleteRef.current = null;
+        }
+      },
+    );
     return () => sub.remove();
   }, [tryAgainPlayer1, tryAgainUri]);
-
-  useEffect(() => {
-    if (ttsUri && player) {
-      player.play();
-    }
-  }, [ttsUri]);
 
   const playGoodJobSound = useCallback(async () => {
     if (!goodJobUri) return;
     const idx = goodJobPlayIndexRef.current % 2;
     const p = idx === 0 ? goodJobPlayer0 : goodJobPlayer1;
     if (!p) return;
-    player?.pause();
-    tryAgainPlayer0?.pause();
-    tryAgainPlayer1?.pause();
+    safePause(player);
+    safePause(tryAgainPlayer0);
+    safePause(tryAgainPlayer1);
     setTtsUri(null);
     ttsQueueRef.current = [];
     isPlayingRef.current = false;
@@ -347,18 +446,25 @@ export default function PracticeScreen({
       shouldRouteThroughEarpiece: false,
     });
     goodJobPlayIndexRef.current += 1;
+    goodJobPlayerToPlayRef.current = p;
     p.seekTo(0);
-    p.play();
-  }, [goodJobUri, goodJobPlayer0, goodJobPlayer1, player, tryAgainPlayer0, tryAgainPlayer1]);
+  }, [
+    goodJobUri,
+    goodJobPlayer0,
+    goodJobPlayer1,
+    player,
+    tryAgainPlayer0,
+    tryAgainPlayer1,
+  ]);
 
   const playTryAgainSound = useCallback(async () => {
     if (!tryAgainUri) return;
     const idx = tryAgainPlayIndexRef.current % 2;
     const p = idx === 0 ? tryAgainPlayer0 : tryAgainPlayer1;
     if (!p) return;
-    player?.pause();
-    goodJobPlayer0?.pause();
-    goodJobPlayer1?.pause();
+    safePause(player);
+    safePause(goodJobPlayer0);
+    safePause(goodJobPlayer1);
     setTtsUri(null);
     ttsQueueRef.current = [];
     isPlayingRef.current = false;
@@ -369,9 +475,16 @@ export default function PracticeScreen({
       shouldRouteThroughEarpiece: false,
     });
     tryAgainPlayIndexRef.current += 1;
+    tryAgainPlayerToPlayRef.current = p;
     p.seekTo(0);
-    p.play();
-  }, [tryAgainUri, tryAgainPlayer0, tryAgainPlayer1, player, goodJobPlayer0, goodJobPlayer1]);
+  }, [
+    tryAgainUri,
+    tryAgainPlayer0,
+    tryAgainPlayer1,
+    player,
+    goodJobPlayer0,
+    goodJobPlayer1,
+  ]);
 
   const sayPhrasePrefix = getFeedbackPhrases(targetLang).sayPhrase;
   const phraseStartRef = useRef<number | null>(null);
@@ -411,7 +524,7 @@ export default function PracticeScreen({
 
       const newIndex = Math.min(
         Math.floor(elapsedInPhrase / wordMs),
-        words.length - 1
+        words.length - 1,
       );
       setCurrentWordIndex(Math.max(0, newIndex));
     }, 70);
@@ -428,7 +541,11 @@ export default function PracticeScreen({
       queueTts(text, targetLang);
       playNextInQueue();
 
-      const streamUrl = getSpeechStreamUrl(text, "marin", TTS_LANG[targetLang] || targetLang);
+      const streamUrl = getSpeechStreamUrl(
+        text,
+        "marin",
+        TTS_LANG[targetLang] || targetLang,
+      );
       const cachePath = `${FileSystem.cacheDirectory}phrase_replay.mp3`;
       FileSystem.downloadAsync(streamUrl, cachePath)
         .then(({ uri }) => {
@@ -449,10 +566,13 @@ export default function PracticeScreen({
       setPhase("prompt");
       playPromptForPhrase(next);
     } else {
-      await recordPhrasesPracticed(phrases.length);
       setPhase("complete");
     }
-  }, [phraseIndex, phrases.length, playPromptForPhrase, recordPhrasesPracticed]);
+  }, [
+    phraseIndex,
+    phrases.length,
+    playPromptForPhrase,
+  ]);
 
   const handleFlashcardsToggle = useCallback(async () => {
     if (!phrase) return;
@@ -539,13 +659,16 @@ export default function PracticeScreen({
         encoding: "base64",
       });
       if (recordStartTimeRef.current != null) {
-        const seconds = Math.ceil((Date.now() - recordStartTimeRef.current) / 1000);
+        const seconds = Math.ceil(
+          (Date.now() - recordStartTimeRef.current) / 1000,
+        );
         await recordUsage(seconds);
         recordStartTimeRef.current = null;
       }
       const result = await evaluateSpeech(base64, phrase!.phrase);
       setFeedback(result);
       if (result.score >= SCORE_THRESHOLD) {
+        await recordPhrasePractice();
         setPhase("correct");
         if (goodJobUri) {
           playGoodJobSound();
@@ -572,15 +695,12 @@ export default function PracticeScreen({
     }
   };
 
-  const showLoader =
-    phase === "loading" || (phase === "intro" && !ttsPlaying && intro != null);
-
   if (showLoader) {
     return (
       <View style={styles.container}>
         <TouchableOpacity
           style={[styles.backButton, { top: insets.top }]}
-          onPress={() => navigation.goBack()}
+          onPress={() => handleBack(navigation)}
           hitSlop={12}
         >
           <Text style={styles.backText}>← Back</Text>
@@ -608,7 +728,7 @@ export default function PracticeScreen({
 
       <TouchableOpacity
         style={[styles.backButton, { top: insets.top }]}
-        onPress={() => navigation.goBack()}
+        onPress={() => handleBack(navigation)}
         hitSlop={12}
         activeOpacity={0.7}
       >
@@ -662,11 +782,13 @@ export default function PracticeScreen({
                       {word}
                       {i < words.length - 1 ? " " : ""}
                     </Text>
-                  )
+                  ),
                 )}
               </Text>
               {phrase.translation && (
-                <Text style={styles.phraseTranslation}>{phrase.translation}</Text>
+                <Text style={styles.phraseTranslation}>
+                  {phrase.translation}
+                </Text>
               )}
               <TouchableOpacity
                 style={styles.replayButton}
@@ -719,7 +841,9 @@ export default function PracticeScreen({
                       Heard: "{feedback.transcription}"
                     </Text>
                   ) : null}
-                  <Text style={styles.feedbackIncorrect}>{feedback.feedback}</Text>
+                  <Text style={styles.feedbackIncorrect}>
+                    {feedback.feedback}
+                  </Text>
                   <Text style={styles.feedbackScore}>
                     Score: {feedback.score}/100
                   </Text>
@@ -800,6 +924,17 @@ export default function PracticeScreen({
         >
           <View style={styles.correctActions}>
             <TouchableOpacity
+              style={styles.tryAgainButton}
+              onPress={() => {
+                setPhase("prompt");
+                setFeedback(null);
+                playPromptForPhrase(phraseIndexRef.current);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.tryAgainButtonText}>Try again</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={[
                 styles.flashcardsButton,
                 isInFlashcards(phrase.id) && styles.flashcardsButtonActive,
@@ -810,7 +945,8 @@ export default function PracticeScreen({
               <Text
                 style={[
                   styles.flashcardsButtonText,
-                  isInFlashcards(phrase.id) && styles.flashcardsButtonTextActive,
+                  isInFlashcards(phrase.id) &&
+                    styles.flashcardsButtonTextActive,
                 ]}
               >
                 {isInFlashcards(phrase.id)
@@ -852,7 +988,7 @@ export default function PracticeScreen({
         >
           <TouchableOpacity
             style={styles.doneButton}
-            onPress={() => navigation.goBack()}
+            onPress={() => handleBack(navigation)}
           >
             <Text style={styles.doneButtonText}>Done</Text>
           </TouchableOpacity>
@@ -1077,9 +1213,22 @@ const styles = StyleSheet.create({
   },
   correctActions: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "center",
     gap: 12,
+  },
+  tryAgainButton: {
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: "#00877B",
+  },
+  tryAgainButtonText: {
+    fontSize: 16,
+    color: "#00877B",
+    fontWeight: "600",
   },
   flashcardsButton: {
     paddingVertical: 14,

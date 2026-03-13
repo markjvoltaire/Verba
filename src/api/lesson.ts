@@ -1,4 +1,4 @@
-import { apiClient } from './client';
+import { apiClient } from "./client";
 
 export interface LessonIntroResponse {
   greeting: string;
@@ -15,5 +15,7 @@ export async function getLessonIntro(
     nativeLang,
     targetLang,
   });
-  return apiClient.get<LessonIntroResponse>(`/lesson/intro?${params.toString()}`);
+  return apiClient.get<LessonIntroResponse>(
+    `/lesson/intro?${params.toString()}`,
+  );
 }

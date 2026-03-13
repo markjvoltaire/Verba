@@ -1,5 +1,8 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Purchases from 'react-native-purchases';
+import { logProgress } from '../api/progress';
+import { useUserId } from './UserContext';
 
 const STREAK_KEY = '@verba_streak';
 const DAILY_COUNT_KEY = '@verba_daily_count';
@@ -21,6 +24,7 @@ interface StreakContextType {
   recordPhrasesPracticed: (count: number) => Promise<void>;
   recordPracticeDate: () => Promise<void>;
   loadStreakData: () => Promise<void>;
+  clearStats: () => Promise<void>;
 }
 
 const StreakContext = createContext<StreakContextType | null>(null);
@@ -40,6 +44,7 @@ export function StreakProvider({ children }: { children: React.ReactNode }) {
   const [todayPhraseCount, setTodayPhraseCount] = useState(0);
   const [practiceDates, setPracticeDates] = useState<string[]>([]);
   const dailyGoal = 5;
+  const { userId: revenueCatUserId } = useUserId();
 
   const loadStreakData = useCallback(async () => {
     try {
@@ -122,7 +127,11 @@ export function StreakProvider({ children }: { children: React.ReactNode }) {
     setStreak(newStreak);
     setTodayPhraseCount(newCount);
     if (datesToStore) setPracticeDates(datesToStore);
-  }, []);
+    const rcUserId = revenueCatUserId ?? (await Purchases.getAppUserID().catch(() => null));
+    if (rcUserId) {
+      logProgress(rcUserId, 0, 1);
+    }
+  }, [revenueCatUserId]);
 
   const recordPhrasesPracticed = useCallback(async (count: number) => {
     if (count <= 0) return;
@@ -173,7 +182,11 @@ export function StreakProvider({ children }: { children: React.ReactNode }) {
     setStreak(newStreak);
     setTodayPhraseCount(newCount);
     if (datesToStore) setPracticeDates(datesToStore);
-  }, []);
+    const rcUserId = revenueCatUserId ?? (await Purchases.getAppUserID().catch(() => null));
+    if (rcUserId && count > 0) {
+      logProgress(rcUserId, 0, count);
+    }
+  }, [revenueCatUserId]);
 
   const recordPracticeDate = useCallback(async () => {
     const today = todayString();
@@ -185,6 +198,22 @@ export function StreakProvider({ children }: { children: React.ReactNode }) {
       const updated = [...dates, today].sort().slice(-MAX_PRACTICE_DATES);
       await AsyncStorage.setItem(PRACTICE_DATES_KEY, JSON.stringify(updated));
       setPracticeDates(updated);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const clearStats = useCallback(async () => {
+    try {
+      await Promise.all([
+        AsyncStorage.removeItem(STREAK_KEY),
+        AsyncStorage.removeItem(DAILY_COUNT_KEY),
+        AsyncStorage.removeItem(DAILY_DATE_KEY),
+        AsyncStorage.removeItem(PRACTICE_DATES_KEY),
+      ]);
+      setStreak(0);
+      setTodayPhraseCount(0);
+      setPracticeDates([]);
     } catch {
       // ignore
     }
@@ -205,6 +234,7 @@ export function StreakProvider({ children }: { children: React.ReactNode }) {
         recordPhrasesPracticed,
         recordPracticeDate,
         loadStreakData,
+        clearStats,
       }}
     >
       {children}

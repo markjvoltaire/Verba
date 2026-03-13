@@ -1,10 +1,14 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Pressable } from 'react-native';
+import React, { useMemo, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Pressable, Alert, ActivityIndicator } from 'react-native';
 import { Calendar } from 'react-native-calendars';
+import { useFocusEffect } from '@react-navigation/native';
+import Purchases from 'react-native-purchases';
 import { useApp, type Language } from '../context/AppContext';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { useStreak } from '../context/StreakContext';
 import { useUsage } from '../context/UsageContext';
+import { useUserId } from '../context/UserContext';
+import { getProgressFromBackend, type ProgressData } from '../api/progress';
 
 const NATIVE_LANGUAGES: { code: Language; label: string; flag: string }[] = [
   { code: 'es', label: 'Spanish', flag: '🇪🇸' },
@@ -15,9 +19,41 @@ const NATIVE_LANGUAGES: { code: Language; label: string; flag: string }[] = [
 
 export default function ProgressScreen() {
   const { language, onboardingProfile, setNativeLanguage } = useApp();
-  const { streak, todayPhraseCount, dailyGoal, practiceDates } = useStreak();
-  const { canPractice, todayUsageSeconds, plan, freeLimitSeconds } = useUsage();
+  const { streak, todayPhraseCount, dailyGoal, practiceDates, clearStats: clearStreakStats } = useStreak();
+  const { todayUsageSeconds, clearStats: clearUsageStats } = useUsage();
+  const { userId: revenueCatUserId } = useUserId();
+  const [backendProgress, setBackendProgress] = useState<ProgressData | null>(null);
+  const [isLoadingProgress, setIsLoadingProgress] = useState(true);
   const [nativeLangModalVisible, setNativeLangModalVisible] = useState(false);
+
+  const rcUserId = revenueCatUserId ?? null;
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      setIsLoadingProgress(true);
+      const fetchProgress = async () => {
+        try {
+          const id = rcUserId ?? (await Purchases.getAppUserID().catch(() => null));
+          if (id) {
+            const data = await getProgressFromBackend(id);
+            if (!cancelled && data) setBackendProgress(data);
+          }
+        } finally {
+          if (!cancelled) setIsLoadingProgress(false);
+        }
+      };
+      fetchProgress();
+      return () => {
+        cancelled = true;
+      };
+    }, [rcUserId])
+  );
+
+  const displayUsageSeconds = backendProgress?.todayUsageSeconds ?? todayUsageSeconds;
+  const displayPhraseCount = backendProgress?.todayPhraseCount ?? todayPhraseCount;
+  const displayStreak = backendProgress?.streak ?? streak;
+  const displayPracticeDates = backendProgress?.practiceDates ?? practiceDates;
 
   const nativeLang = onboardingProfile?.nativeLanguage ?? 'en';
   const nativeLangLabel = NATIVE_LANGUAGES.find((l) => l.code === nativeLang)?.label ?? 'English';
@@ -28,13 +64,30 @@ export default function ProgressScreen() {
     setNativeLangModalVisible(false);
   };
 
+  const handleClearStats = () => {
+    Alert.alert(
+      'Clear stats',
+      'This will reset your streak, daily goal progress, practice history, and speaking time. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            await Promise.all([clearStreakStats(), clearUsageStats()]);
+          },
+        },
+      ]
+    );
+  };
+
   const markedDates = useMemo(() => {
     const marked: Record<string, { marked: boolean; dotColor?: string }> = {};
-    practiceDates.forEach((d) => {
+    displayPracticeDates.forEach((d) => {
       marked[d] = { marked: true, dotColor: '#00877B' };
     });
     return marked;
-  }, [practiceDates]);
+  }, [displayPracticeDates]);
 
   const languageLabels: Record<string, string> = {
     es: 'Spanish',
@@ -100,11 +153,17 @@ export default function ProgressScreen() {
         </Pressable>
       </Modal>
 
+      {isLoadingProgress ? (
+        <View style={styles.loadingSection}>
+          <ActivityIndicator size="large" color="#00877B" />
+          <Text style={styles.loadingText}>Loading progress…</Text>
+        </View>
+      ) : (
+        <>
       <View style={styles.speakingCard}>
         <Text style={styles.speakingCardTitle}>Speaking time today</Text>
         <Text style={styles.speakingCardValue}>
-          {Math.floor(todayUsageSeconds / 60)}:{String(todayUsageSeconds % 60).padStart(2, '0')}
-          {plan === 'free' ? ` / ${Math.floor(freeLimitSeconds / 60)}:00 limit` : ''}
+          {Math.floor(displayUsageSeconds / 60)}:{String(displayUsageSeconds % 60).padStart(2, '0')}
         </Text>
         <Text style={styles.speakingCardSubtext}>
           Time spent speaking on the Speak tab
@@ -117,22 +176,15 @@ export default function ProgressScreen() {
           Practice {dailyGoal} phrases today
         </Text>
         <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: `${Math.min(100, (todayPhraseCount / dailyGoal) * 100)}%` }]} />
+          <View style={[styles.progressFill, { width: `${Math.min(100, (displayPhraseCount / dailyGoal) * 100)}%` }]} />
         </View>
-        <Text style={styles.progressText}>{todayPhraseCount} / {dailyGoal}</Text>
+        <Text style={styles.progressText}>{displayPhraseCount} / {dailyGoal}</Text>
       </View>
 
-      {!canPractice && (
-        <View style={styles.limitCard}>
-          <Text style={styles.limitText}>Daily limit reached (3 min)</Text>
-          <Text style={styles.limitSubtext}>Upgrade to Pro for unlimited practice</Text>
-        </View>
-      )}
-
-      {streak > 0 && (
+      {displayStreak > 0 && (
         <View style={styles.streakCard}>
           <Text style={styles.streakEmoji}>🔥</Text>
-          <Text style={styles.streakText}>{streak} Day Streak</Text>
+          <Text style={styles.streakText}>{displayStreak} Day Streak</Text>
         </View>
       )}
 
@@ -159,6 +211,16 @@ export default function ProgressScreen() {
           }}
         />
       </View>
+
+      <TouchableOpacity
+        style={styles.clearStatsButton}
+        onPress={handleClearStats}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.clearStatsButtonText}>Clear stats</Text>
+      </TouchableOpacity>
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -172,6 +234,15 @@ const styles = StyleSheet.create({
     padding: 24,
     paddingTop: 60,
     paddingBottom: 40,
+  },
+  loadingSection: {
+    paddingVertical: 48,
+    alignItems: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 15,
+    color: '#64748b',
   },
   header: {
     flexDirection: 'row',
@@ -400,5 +471,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#b91c1c',
     marginTop: 4,
+  },
+  clearStatsButton: {
+    marginTop: 24,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#fff',
+    alignItems: 'center',
+  },
+  clearStatsButtonText: {
+    fontSize: 15,
+    color: '#64748b',
+    fontWeight: '500',
   },
 });

@@ -30,6 +30,7 @@ const SCENARIOS = [
   { id: 'airport', label: 'Airport' },
   { id: 'hotel', label: 'Hotel' },
   { id: 'small_talk', label: 'Small talk' },
+  { id: 'dating', label: 'Dating' },
 ];
 
 export default function ScenarioScreen({ navigation }: { navigation: any }) {
@@ -43,7 +44,7 @@ export default function ScenarioScreen({ navigation }: { navigation: any }) {
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recordStartRef = useRef<number | null>(null);
   const { recordPracticeDate } = useStreak();
-  const { canPractice, recordUsage } = useUsage();
+  const { recordUsage } = useUsage();
   const scrollRef = useRef<ScrollView>(null);
   const [playingMsgIndex, setPlayingMsgIndex] = useState<number | null>(null);
   const [ttsUri, setTtsUri] = useState<string | null>(null);
@@ -129,14 +130,6 @@ export default function ScenarioScreen({ navigation }: { navigation: any }) {
   };
 
   const startRecording = async () => {
-    if (!canPractice) {
-      Alert.alert(
-        'Daily limit reached',
-        'You have used your 3 minutes of free practice today. Upgrade to Pro for unlimited practice!',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
     try {
       await setAudioModeAsync({
         allowsRecording: true,

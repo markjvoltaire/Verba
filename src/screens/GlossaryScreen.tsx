@@ -55,7 +55,11 @@ function amplitudeFromSample(channels: { frames: number[] }[]): number {
   return Math.min(1, max);
 }
 
-function translationPhraseId(input: string, translation: string, lang: string): string {
+function translationPhraseId(
+  input: string,
+  translation: string,
+  lang: string,
+): string {
   const str = `${lang}:${input.trim()}:${translation.trim()}`;
   let h = 0;
   for (let i = 0; i < str.length; i++) {
@@ -547,7 +551,11 @@ export default function GlossaryScreen() {
                         accessible
                         accessibilityLabel={
                           isInFlashcards(
-                            translationPhraseId(inputText.trim(), translation, language)
+                            translationPhraseId(
+                              inputText.trim(),
+                              translation,
+                              language,
+                            ),
                           )
                             ? "Remove from flashcards"
                             : "Add to flashcards"
@@ -556,7 +564,11 @@ export default function GlossaryScreen() {
                       >
                         <Text style={styles.phraseActionIcon}>
                           {isInFlashcards(
-                            translationPhraseId(inputText.trim(), translation, language)
+                            translationPhraseId(
+                              inputText.trim(),
+                              translation,
+                              language,
+                            ),
                           )
                             ? "📕"
                             : "📖"}
@@ -614,7 +626,10 @@ export default function GlossaryScreen() {
                 activeOpacity={0.7}
               >
                 <Text
-                  style={[styles.pillText, isSelected && styles.pillTextSelected]}
+                  style={[
+                    styles.pillText,
+                    isSelected && styles.pillTextSelected,
+                  ]}
                 >
                   {label}
                 </Text>

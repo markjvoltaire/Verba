@@ -8,9 +8,13 @@ module.exports = {
   ...appJson,
   expo: {
     ...appJson.expo,
+    scheme: 'verba',
     extra: {
       ...appJson.expo.extra,
       apiUrl: process.env.EXPO_PUBLIC_API_URL || productionApiUrl,
+      revenueCatApiKeyTest: process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_TEST || '',
+      supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || '',
+      supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
     },
   },
 };

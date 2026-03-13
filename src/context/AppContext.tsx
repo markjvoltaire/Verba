@@ -5,14 +5,15 @@ const LANGUAGE_KEY = '@verba_language';
 const ONBOARDING_KEY = '@verba_onboarding_done';
 const ONBOARDING_PROFILE_KEY = '@verba_onboarding_profile';
 const USER_ID_KEY = '@verba_user_id';
+const USER_EMAIL_KEY = '@verba_user_email';
 
 export type Language = 'es' | 'fr' | 'it' | 'en';
 
 export type LanguageLevel = 'beginner' | 'intermediate' | 'advanced';
 
-export type Gender = 'male' | 'female' | 'non_binary' | 'prefer_not_to_say';
-
 export type AgeRange = 'under_20' | '20s' | '30s' | '40s' | '50s' | '60_plus';
+
+export type LearningSpeed = 'relaxed' | 'moderate' | 'fast';
 
 export interface OnboardingProfile {
   name: string;
@@ -20,8 +21,8 @@ export interface OnboardingProfile {
   languageLevel: LanguageLevel;
   motivation: string;
   nativeLanguage: Language;
-  gender: Gender;
   ageRange: AgeRange;
+  learningSpeed?: LearningSpeed;
 }
 
 interface AppContextType {
@@ -35,6 +36,8 @@ interface AppContextType {
   loadStoredData: () => Promise<void>;
   user: string | null;
   userChecked: boolean;
+  userEmail: string | null;
+  setUserEmail: (email: string | null) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -44,7 +47,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [hasCompletedOnboarding, setHasCompletedOnboardingState] = useState(false);
   const [onboardingProfile, setOnboardingProfileState] = useState<OnboardingProfile | null>(null);
   const [user, setUserState] = useState<string | null>(null);
+  const [userEmail, setUserEmailState] = useState<string | null>(null);
   const [userChecked, setUserChecked] = useState(false);
+
+  const setUserEmail = useCallback(async (email: string | null) => {
+    setUserEmailState(email);
+    if (email) {
+      await AsyncStorage.setItem(USER_EMAIL_KEY, email);
+    } else {
+      await AsyncStorage.removeItem(USER_EMAIL_KEY);
+    }
+  }, []);
 
   const setOnboardingProfile = useCallback(async (profile: OnboardingProfile) => {
     setOnboardingProfileState(profile);
@@ -71,11 +84,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const loadStoredData = useCallback(async () => {
     try {
-      const [storedLang, storedOnboarding, storedProfile, storedUserId] = await Promise.all([
+      const [storedLang, storedOnboarding, storedProfile, storedUserId, storedEmail] = await Promise.all([
         AsyncStorage.getItem(LANGUAGE_KEY),
         AsyncStorage.getItem(ONBOARDING_KEY),
         AsyncStorage.getItem(ONBOARDING_PROFILE_KEY),
         AsyncStorage.getItem(USER_ID_KEY),
+        AsyncStorage.getItem(USER_EMAIL_KEY),
       ]);
       if (storedLang && ['es', 'fr', 'it', 'en'].includes(storedLang)) {
         setLanguageState(storedLang as Language);
@@ -92,6 +106,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setHasCompletedOnboardingState(false);
       }
       setUserState(storedUserId);
+      setUserEmailState(storedEmail);
     } catch {
       // ignore
     } finally {
@@ -112,6 +127,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         loadStoredData,
         user,
         userChecked,
+        userEmail,
+        setUserEmail,
       }}
     >
       {children}

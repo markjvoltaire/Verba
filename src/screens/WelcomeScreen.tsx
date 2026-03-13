@@ -10,6 +10,10 @@ const GREETING_INTERVAL_MS = 1800;
 export default function WelcomeScreen() {
   const navigation = useNavigation();
   const { userChecked } = useApp();
+
+  const handleGetStarted = () => {
+    (navigation as any).navigate("Onboarding");
+  };
   const [isAnimating, setIsAnimating] = useState(false);
   const [greetingIndex, setGreetingIndex] = useState(0);
   const buttonOpacity = useRef(new Animated.Value(0)).current;
@@ -73,7 +77,7 @@ export default function WelcomeScreen() {
         >
           <Pressable
             style={styles.button}
-            onPress={() => navigation.navigate("Onboarding")}
+            onPress={handleGetStarted}
           >
             <Text style={styles.buttonText}>Get Started</Text>
           </Pressable>

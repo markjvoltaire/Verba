@@ -5,7 +5,13 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  ActivityIndicator,
+  Alert,
 } from "react-native";
+import { usePaywallCheck } from "../hooks/usePaywallCheck";
+import { useUserId } from "../context/UserContext";
+import { updatePlanToPro } from "../api/users";
+import Purchases from "react-native-purchases";
 import { LanguageSelector } from "../components/LanguageSelector";
 
 const LESSONS: Record<
@@ -19,6 +25,12 @@ const LESSONS: Record<
       subtitle: "Greetings & basics",
       icon: "👋",
     },
+    {
+      id: "dating",
+      title: "Dating",
+      subtitle: "Meeting someone new",
+      icon: "💕",
+    },
   ],
   medium: [
     {
@@ -26,6 +38,12 @@ const LESSONS: Record<
       title: "Ordering a meal",
       subtitle: "Restaurant phrases",
       icon: "🍽️",
+    },
+    {
+      id: "dating",
+      title: "Dating",
+      subtitle: "Meeting someone new",
+      icon: "💕",
     },
   ],
   hard: [
@@ -45,7 +63,7 @@ const DIFFICULTIES = [
   { id: "hard", label: "Hard" },
 ] as const;
 
-export type LessonId = "small_talk" | "restaurant" | "airport" | "hotel";
+export type LessonId = "small_talk" | "restaurant" | "airport" | "hotel" | "dating";
 export type DifficultyId = (typeof DIFFICULTIES)[number]["id"];
 
 export default function LessonSelectScreen({
@@ -56,6 +74,8 @@ export default function LessonSelectScreen({
   const [selectedDifficulty, setSelectedDifficulty] =
     useState<DifficultyId>("easy");
   const [selectedLesson, setSelectedLesson] = useState<LessonId | null>(null);
+  const { requireProAccess, isChecking: isCheckingAccess } = usePaywallCheck();
+  const { userId: revenueCatUserId } = useUserId();
 
   const availableLessons = LESSONS[selectedDifficulty] ?? [];
   const effectiveLesson =
@@ -65,13 +85,34 @@ export default function LessonSelectScreen({
         ? (availableLessons[0].id as LessonId)
         : null;
 
-  const handleStart = () => {
+  const handleStart = async () => {
     const scenario = effectiveLesson ?? selectedLesson;
     if (!scenario) return;
-    navigation.navigate("PracticeList", {
-      scenario,
-      difficulty: selectedDifficulty,
-    });
+
+    const result = await requireProAccess();
+
+    if (result.granted) {
+      if (result.justPurchased) {
+        const rcUserId = revenueCatUserId ?? (await Purchases.getAppUserID().catch(() => null));
+        if (rcUserId) {
+          updatePlanToPro(rcUserId);
+        }
+        navigation.navigate("Congrats", {
+          scenario,
+          difficulty: selectedDifficulty,
+        });
+      } else {
+        navigation.navigate("PracticeList", {
+          scenario,
+          difficulty: selectedDifficulty,
+        });
+      }
+    } else if (result.error) {
+      Alert.alert(
+        "Error",
+        "Could not verify subscription. Please try again."
+      );
+    }
   };
 
   return (
@@ -81,13 +122,7 @@ export default function LessonSelectScreen({
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.header}>
-        {navigation.canGoBack() ? (
-          <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={12}>
-            <Text style={styles.backText}>← Back</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.headerSpacer} />
-        )}
+        <View style={styles.headerSpacer} />
         <LanguageSelector />
       </View>
 
@@ -149,12 +184,16 @@ export default function LessonSelectScreen({
       <TouchableOpacity
         style={[
           styles.startButton,
-          !effectiveLesson && styles.startButtonDisabled,
+          (!effectiveLesson || isCheckingAccess) && styles.startButtonDisabled,
         ]}
         onPress={handleStart}
-        disabled={!effectiveLesson}
+        disabled={!effectiveLesson || isCheckingAccess}
       >
-        <Text style={styles.startButtonText}>Start lesson</Text>
+        {isCheckingAccess ? (
+          <ActivityIndicator size="small" color="#fff" />
+        ) : (
+          <Text style={styles.startButtonText}>Start lesson</Text>
+        )}
       </TouchableOpacity>
     </ScrollView>
   );

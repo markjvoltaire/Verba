@@ -10,14 +10,31 @@ import {
   Platform,
   Animated,
   Dimensions,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
+import Constants from 'expo-constants';
+import Purchases from 'react-native-purchases';
+import RevenueCatUI from 'react-native-purchases-ui';
+import { getMainResetState } from '../navigation/paywallNavigation';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SLIDE_DISTANCE = SCREEN_WIDTH * 0.15;
 import LottieView from 'lottie-react-native';
 import { useApp } from '../context/AppContext';
-import type { Language, LanguageLevel, Gender, AgeRange, OnboardingProfile } from '../context/AppContext';
-import WaveLogo from '../components/WaveLogo';
+import type { Language, LanguageLevel, AgeRange, LearningSpeed, OnboardingProfile } from '../context/AppContext';
+import { getPhrases } from '../api/phrases';
+import type { Phrase } from '../api/phrases';
+import OnboardingPronunciationStep from '../components/OnboardingPronunciationStep';
+import { getLearningPlan } from '../lib/learningPlan';
+import { syncUserToBackend, updatePlanToPro } from '../api/users';
+import { useUserId } from '../context/UserContext';
+
+const LEVEL_TO_DIFFICULTY: Record<LanguageLevel, string> = {
+  beginner: 'easy',
+  intermediate: 'medium',
+  advanced: 'hard',
+};
 
 const LANGUAGES: { code: Language; label: string; flag: string }[] = [
   { code: 'es', label: 'Spanish', flag: '🇪🇸' },
@@ -41,13 +58,6 @@ const MOTIVATIONS = [
   'Other',
 ];
 
-const GENDERS: { value: Gender; label: string }[] = [
-  { value: 'male', label: 'Male' },
-  { value: 'female', label: 'Female' },
-  { value: 'non_binary', label: 'Non-binary' },
-  { value: 'prefer_not_to_say', label: 'Prefer not to say' },
-];
-
 const AGE_RANGES: { value: AgeRange; label: string }[] = [
   { value: 'under_20', label: 'Under 20' },
   { value: '20s', label: '20s' },
@@ -57,6 +67,12 @@ const AGE_RANGES: { value: AgeRange; label: string }[] = [
   { value: '60_plus', label: '60 and above' },
 ];
 
+const LEARNING_SPEED_OPTIONS: { value: LearningSpeed; label: string }[] = [
+  { value: 'relaxed', label: 'Take it easy – learn at your own pace' },
+  { value: 'moderate', label: 'Steady progress – a few sessions per week' },
+  { value: 'fast', label: 'Learn fast – daily practice' },
+];
+
 const LANGUAGE_LABELS: Record<Language, string> = {
   es: 'Spanish',
   fr: 'French',
@@ -64,11 +80,13 @@ const LANGUAGE_LABELS: Record<Language, string> = {
   en: 'English',
 };
 
-const TOTAL_STEPS = 9;
+const TOTAL_STEPS = 12;
 const WELCOME_STEP = 1;
 const LANGUAGE_FADE_STEP = 3;
-const CREATING_PLAN_STEP = 9;
-const CREATING_PLAN_DURATION_MS = 2800;
+const NATIVE_LANGUAGE_STEP = 5;
+const PRONUNCIATION_STEP = 6;
+const PLAN_DISPLAY_STEP = 10;
+const CREATING_PLAN_STEP = 11;
 const WELCOME_DURATION_MS = 2700;
 const FADE_SCREEN_DURATION_MS = 3500;
 
@@ -81,14 +99,16 @@ const LANGUAGE_FADE_TEXTS: Record<Language, string> = {
 
 export default function OnboardingScreen({ navigation }: { navigation: any }) {
   const { setLanguage, setHasCompletedOnboarding, setOnboardingProfile } = useApp();
+  const { userId: revenueCatUserId } = useUserId();
   const [step, setStep] = useState(0);
   const [name, setName] = useState('');
   const [learningLanguage, setLearningLanguage] = useState<Language | null>(null);
   const [languageLevel, setLanguageLevel] = useState<LanguageLevel | null>(null);
   const [motivation, setMotivation] = useState('');
   const [nativeLanguage, setNativeLanguage] = useState<Language | null>(null);
-  const [gender, setGender] = useState<Gender | null>(null);
   const [ageRange, setAgeRange] = useState<AgeRange | null>(null);
+  const [learningSpeed, setLearningSpeed] = useState<LearningSpeed | null>(null);
+  const [pronunciationPhrase, setPronunciationPhrase] = useState<Phrase | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const stepSlideAnim = useRef(new Animated.Value(0)).current;
   const stepOpacityAnim = useRef(new Animated.Value(1)).current;
@@ -97,6 +117,21 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
   const prevStepRef = useRef(0);
   const welcomeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const languageFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const planTitleOpacity = useRef(new Animated.Value(0)).current;
+  const planTitleTranslateY = useRef(new Animated.Value(16)).current;
+  const planSubtitleOpacity = useRef(new Animated.Value(0)).current;
+  const planCardOpacity = useRef(new Animated.Value(0)).current;
+  const planCardTranslateY = useRef(new Animated.Value(24)).current;
+  const planItemOpacities = useRef([
+    new Animated.Value(0),
+    new Animated.Value(0),
+    new Animated.Value(0),
+  ]).current;
+  const planItemTranslateX = useRef([
+    new Animated.Value(20),
+    new Animated.Value(20),
+    new Animated.Value(20),
+  ]).current;
 
   const canProceed = () => {
     switch (step) {
@@ -105,10 +140,12 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       case 2: return learningLanguage !== null;
       case LANGUAGE_FADE_STEP: return true;
       case 4: return languageLevel !== null;
-      case 5: return motivation.trim().length > 0;
-      case 6: return nativeLanguage !== null;
-      case 7: return gender !== null;
+      case NATIVE_LANGUAGE_STEP: return nativeLanguage !== null;
+      case PRONUNCIATION_STEP: return true;
+      case 7: return motivation.trim().length > 0;
       case 8: return ageRange !== null;
+      case 9: return learningSpeed !== null;
+      case PLAN_DISPLAY_STEP: return true;
       default: return false;
     }
   };
@@ -120,7 +157,10 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     } else if (step === 4) {
       prevStepRef.current = step;
       setStep(2);
-    } else if (step > 0 && step !== WELCOME_STEP && step !== LANGUAGE_FADE_STEP) {
+    } else if (step === PLAN_DISPLAY_STEP) {
+      prevStepRef.current = step;
+      setStep(9);
+    } else if (step > 0 && step !== WELCOME_STEP && step !== LANGUAGE_FADE_STEP && step !== CREATING_PLAN_STEP) {
       prevStepRef.current = step;
       setStep(step - 1);
     } else if (step === WELCOME_STEP || step === LANGUAGE_FADE_STEP) {
@@ -132,29 +172,33 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
   };
 
   const handleNext = async () => {
-    if (step < TOTAL_STEPS - 1) {
-      prevStepRef.current = step;
-      setStep(step + 1);
-    } else {
-      if (!learningLanguage || !languageLevel || !nativeLanguage || !gender || !ageRange) return;
+    if (step === PLAN_DISPLAY_STEP) {
+      if (!learningLanguage || !languageLevel || !nativeLanguage || !ageRange || !learningSpeed) return;
       const profile: OnboardingProfile = {
         name: name.trim(),
         learningLanguage,
         languageLevel,
         motivation: motivation.trim(),
         nativeLanguage,
-        gender,
         ageRange,
+        learningSpeed,
       };
       await setOnboardingProfile(profile);
       await setLanguage(learningLanguage);
       await setHasCompletedOnboarding(true);
+      const rcUserId = revenueCatUserId ?? (await Purchases.getAppUserID().catch(() => null));
+      if (rcUserId) {
+        syncUserToBackend(rcUserId, profile);
+      }
       setStep(CREATING_PLAN_STEP);
+    } else if (step < TOTAL_STEPS - 1) {
+      prevStepRef.current = step;
+      setStep(step + 1);
     }
   };
 
   useEffect(() => {
-    if (step === CREATING_PLAN_STEP || step === WELCOME_STEP || step === LANGUAGE_FADE_STEP || step < 0 || step >= TOTAL_STEPS) return;
+    if (step === CREATING_PLAN_STEP || step === PLAN_DISPLAY_STEP || step === WELCOME_STEP || step === LANGUAGE_FADE_STEP || step < 0 || step >= TOTAL_STEPS) return;
     const prevStep = prevStepRef.current;
     const isForward = step > prevStep;
     const isInitial = step === 0 && prevStep === 0;
@@ -235,18 +279,97 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
   }, [step, learningLanguage, languageFadeAnim]);
 
   useEffect(() => {
+    if (step === PRONUNCIATION_STEP && learningLanguage && languageLevel) {
+      const apiDifficulty = LEVEL_TO_DIFFICULTY[languageLevel];
+      getPhrases(learningLanguage, undefined, apiDifficulty, 1)
+        .then((phrases) => setPronunciationPhrase(phrases[0] ?? null))
+        .catch(() => setPronunciationPhrase(null));
+    } else if (step !== PRONUNCIATION_STEP) {
+      setPronunciationPhrase(null);
+    }
+  }, [step, learningLanguage, languageLevel]);
+
+  useEffect(() => {
     if (step !== CREATING_PLAN_STEP) return;
     fadeAnim.setValue(0);
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 600,
+      duration: 400,
       useNativeDriver: true,
     }).start();
-    const timer = setTimeout(() => {
-      navigation.reset({ routes: [{ name: 'Main' }] });
-    }, CREATING_PLAN_DURATION_MS);
-    return () => clearTimeout(timer);
-  }, [step, navigation, fadeAnim]);
+  }, [step, fadeAnim]);
+
+  useEffect(() => {
+    if (step !== PLAN_DISPLAY_STEP) return;
+    planTitleOpacity.setValue(0);
+    planTitleTranslateY.setValue(16);
+    planSubtitleOpacity.setValue(0);
+    planCardOpacity.setValue(0);
+    planCardTranslateY.setValue(24);
+    planItemOpacities.forEach((a) => a.setValue(0));
+    planItemTranslateX.forEach((a) => a.setValue(20));
+
+    Animated.sequence([
+      Animated.parallel([
+        Animated.timing(planTitleOpacity, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+        Animated.timing(planTitleTranslateY, {
+          toValue: 0,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.delay(150),
+      Animated.timing(planSubtitleOpacity, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: true,
+      }),
+      Animated.delay(100),
+      Animated.parallel([
+        Animated.timing(planCardOpacity, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+        Animated.timing(planCardTranslateY, {
+          toValue: 0,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.delay(80),
+      Animated.parallel([
+        Animated.timing(planItemOpacities[0], { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.timing(planItemTranslateX[0], { toValue: 0, duration: 300, useNativeDriver: true }),
+      ]),
+      Animated.delay(120),
+      Animated.parallel([
+        Animated.timing(planItemOpacities[1], { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.timing(planItemTranslateX[1], { toValue: 0, duration: 300, useNativeDriver: true }),
+      ]),
+      Animated.delay(120),
+      Animated.parallel([
+        Animated.timing(planItemOpacities[2], { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.timing(planItemTranslateX[2], { toValue: 0, duration: 300, useNativeDriver: true }),
+      ]),
+    ]).start();
+  }, [step, planTitleOpacity, planTitleTranslateY, planSubtitleOpacity, planCardOpacity, planCardTranslateY, planItemOpacities, planItemTranslateX]);
+
+  const handlePaywallDismiss = () => {
+    navigation.reset(getMainResetState());
+  };
+
+  const handlePurchaseCompleted = async () => {
+    const rcUserId = revenueCatUserId ?? (await Purchases.getAppUserID().catch(() => null));
+    if (rcUserId) {
+      updatePlanToPro(rcUserId);
+    }
+    navigation.navigate('Congrats');
+  };
 
   const renderStep = () => {
     switch (step) {
@@ -325,25 +448,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
             ))}
           </>
         );
-      case 5:
-        return (
-          <>
-            <Text style={styles.title}>
-              Why do you want to improve speaking {learningLanguage ? LANGUAGE_LABELS[learningLanguage] : 'your language'}?
-            </Text>
-            {MOTIVATIONS.map((m) => (
-              <TouchableOpacity
-                key={m}
-                style={[styles.option, motivation === m && styles.optionSelected]}
-                onPress={() => setMotivation(m)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.optionText, motivation === m && styles.optionTextSelected]}>{m}</Text>
-              </TouchableOpacity>
-            ))}
-          </>
-        );
-      case 6:
+      case NATIVE_LANGUAGE_STEP:
         return (
           <>
             <Text style={styles.title}>What is your native language?</Text>
@@ -363,15 +468,17 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       case 7:
         return (
           <>
-            <Text style={styles.title}>What is your gender?</Text>
-            {GENDERS.map(({ value, label }) => (
+            <Text style={styles.title}>
+              Why do you want to improve speaking {learningLanguage ? LANGUAGE_LABELS[learningLanguage] : 'your language'}?
+            </Text>
+            {MOTIVATIONS.map((m) => (
               <TouchableOpacity
-                key={value}
-                style={[styles.option, gender === value && styles.optionSelected]}
-                onPress={() => setGender(value)}
+                key={m}
+                style={[styles.option, motivation === m && styles.optionSelected]}
+                onPress={() => setMotivation(m)}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.optionText, gender === value && styles.optionTextSelected]}>{label}</Text>
+                <Text style={[styles.optionText, motivation === m && styles.optionTextSelected]}>{m}</Text>
               </TouchableOpacity>
             ))}
           </>
@@ -392,31 +499,110 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
             ))}
           </>
         );
-      case CREATING_PLAN_STEP:
+      case 9:
         return (
-          <View style={styles.creatingPlan}>
-            <WaveLogo />
-            <Text style={styles.creatingPlanText}>Creating your personalized plan...</Text>
-          </View>
+          <>
+            <Text style={styles.title}>
+              How fast do you want to learn {learningLanguage ? LANGUAGE_LABELS[learningLanguage] : 'your language'}?
+            </Text>
+            {LEARNING_SPEED_OPTIONS.map(({ value, label }) => (
+              <TouchableOpacity
+                key={value}
+                style={[styles.option, learningSpeed === value && styles.optionSelected]}
+                onPress={() => setLearningSpeed(value)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.optionText, learningSpeed === value && styles.optionTextSelected]}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </>
         );
+      case PLAN_DISPLAY_STEP: {
+        if (!languageLevel || !learningSpeed || !learningLanguage) return null;
+        const plan = getLearningPlan(languageLevel, learningSpeed);
+        const langLabel = LANGUAGE_LABELS[learningLanguage];
+        const planItems = [
+          `${plan.practiceMinutes} per day`,
+          `${plan.phrasesPerWeek} per week`,
+          plan.sessionsPerWeek === 'Daily' ? 'Practice daily' : `${plan.sessionsPerWeek} per week`,
+        ];
+        const userName = name.trim();
+        return (
+          <>
+            <Animated.Text
+              style={[
+                styles.title,
+                {
+                  opacity: planTitleOpacity,
+                  transform: [{ translateY: planTitleTranslateY }],
+                },
+              ]}
+            >
+              {userName ? `${userName}'s ` : 'Your '}{langLabel} Learning Plan
+            </Animated.Text>
+            <Animated.Text
+              style={[
+                styles.planSubtitle,
+                { opacity: planSubtitleOpacity },
+              ]}
+            >
+              {plan.summary}
+            </Animated.Text>
+            <Animated.View
+              style={[
+                styles.planCard,
+                {
+                  opacity: planCardOpacity,
+                  transform: [{ translateY: planCardTranslateY }],
+                },
+              ]}
+            >
+              {planItems.map((item, i) => (
+                <Animated.Text
+                  key={i}
+                  style={[
+                    styles.planItem,
+                    {
+                      opacity: planItemOpacities[i],
+                      transform: [{ translateX: planItemTranslateX[i] }],
+                    },
+                  ]}
+                >
+                  • {item}
+                </Animated.Text>
+              ))}
+            </Animated.View>
+          </>
+        );
+      }
+      case CREATING_PLAN_STEP:
+        return null;
       default:
         return null;
     }
   };
 
   if (step === CREATING_PLAN_STEP) {
+    const isExpoGo = Constants.appOwnership === 'expo';
+    if (isExpoGo) {
+      return (
+        <View style={[styles.container, styles.creatingPlanOverlay]}>
+          <Text style={styles.creatingPlanText}>Almost there!</Text>
+          <TouchableOpacity style={styles.paywallContinueButton} onPress={handlePaywallDismiss}>
+            <Text style={styles.paywallContinueText}>Continue</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
     return (
-      <View style={styles.container}>
-        <Animated.View
-          style={[
-            styles.creatingPlanOverlay,
-            { opacity: fadeAnim },
-          ]}
-          pointerEvents="none"
-        >
-          {renderStep()}
-        </Animated.View>
-      </View>
+      <Animated.View style={[styles.container, styles.paywallScreen, { opacity: fadeAnim }]}>
+        <RevenueCatUI.Paywall
+          style={styles.paywallView}
+          options={{ displayCloseButton: true }}
+          onDismiss={handlePaywallDismiss}
+          onPurchaseCompleted={handlePurchaseCompleted}
+        />
+      </Animated.View>
     );
   }
 
@@ -458,6 +644,19 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     );
   }
 
+  if (step === PRONUNCIATION_STEP) {
+    return (
+      <OnboardingPronunciationStep
+        phrase={pronunciationPhrase}
+        nativeLanguage={nativeLanguage ?? 'en'}
+        targetLang={learningLanguage ?? 'es'}
+        onBack={handleBack}
+        onSkip={handleNext}
+        onContinue={handleNext}
+      />
+    );
+  }
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -496,15 +695,15 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       </ScrollView>
       <View style={styles.footer}>
         <TouchableOpacity
-          style={[styles.button, !canProceed() && styles.buttonDisabled]}
-          onPress={handleNext}
-          disabled={!canProceed()}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.buttonText}>
-            {step === TOTAL_STEPS - 1 ? 'Get Started' : 'Continue'}
-          </Text>
-        </TouchableOpacity>
+            style={[styles.button, !canProceed() && styles.buttonDisabled]}
+            onPress={handleNext}
+            disabled={!canProceed()}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.buttonText}>
+              {step === PLAN_DISPLAY_STEP ? 'Get Started' : 'Continue'}
+            </Text>
+          </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );
@@ -553,6 +752,27 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     marginBottom: 24,
     textAlign: 'center',
+  },
+  planSubtitle: {
+    fontSize: 16,
+    color: '#64748b',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 24,
+  },
+  planCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    borderWidth: 2,
+    borderColor: '#e2e8f0',
+  },
+  planItem: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#0f172a',
+    marginBottom: 12,
+    lineHeight: 26,
   },
   input: {
     backgroundColor: '#fff',
@@ -612,10 +832,29 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   creatingPlanOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    flex: 1,
     backgroundColor: '#00877B',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  paywallScreen: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+  },
+  paywallView: {
+    flex: 1,
+  },
+  paywallContinueButton: {
+    marginTop: 24,
+    backgroundColor: '#F8F9FA',
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 14,
+  },
+  paywallContinueText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#00877B',
   },
   welcomeContainer: {
     flex: 1,
@@ -648,10 +887,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 30,
     paddingHorizontal: 16,
-  },
-  creatingPlan: {
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   creatingPlanText: {
     marginTop: 32,

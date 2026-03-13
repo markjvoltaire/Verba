@@ -14,7 +14,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.markjvoltaire.Verba",
-      "buildNumber": "6",
+      "buildNumber": "7",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -47,8 +47,6 @@
         "projectId": "978c3fe6-4f0d-4123-9abb-bf789c7aedd7"
       }
     },
-    "plugins": [
-      "expo-audio"
-    ]
+    "plugins": ["expo-audio", "expo-apple-authentication"]
   }
 }

@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Purchases from 'react-native-purchases';
+import { logProgress } from '../api/progress';
+import { useUserId } from './UserContext';
 
 const USAGE_KEY = '@verba_usage_seconds';
 const USAGE_DATE_KEY = '@verba_usage_date';
 const PLAN_KEY = '@verba_plan';
-
-const FREE_DAILY_LIMIT_SECONDS = 180; // 3 minutes
 
 interface UsageContextType {
   plan: 'free' | 'pro';
@@ -14,6 +15,7 @@ interface UsageContextType {
   canPractice: boolean;
   recordUsage: (seconds: number) => Promise<void>;
   loadUsageData: () => Promise<void>;
+  clearStats: () => Promise<void>;
 }
 
 const UsageContext = createContext<UsageContextType | null>(null);
@@ -25,6 +27,7 @@ function todayString() {
 export function UsageProvider({ children }: { children: React.ReactNode }) {
   const [plan, setPlan] = useState<'free' | 'pro'>('free');
   const [todayUsageSeconds, setTodayUsageSeconds] = useState(0);
+  const { userId: revenueCatUserId } = useUserId();
 
   const loadUsageData = useCallback(async () => {
     try {
@@ -58,9 +61,25 @@ export function UsageProvider({ children }: { children: React.ReactNode }) {
       AsyncStorage.setItem(USAGE_KEY, String(newTotal)),
     ]);
     setTodayUsageSeconds(newTotal);
-  }, []);
+    const rcUserId = revenueCatUserId ?? (await Purchases.getAppUserID().catch(() => null));
+    if (rcUserId && seconds > 0) {
+      logProgress(rcUserId, seconds, 0);
+    }
+  }, [revenueCatUserId]);
 
-  const canPractice = plan === 'pro' || todayUsageSeconds < FREE_DAILY_LIMIT_SECONDS;
+  const canPractice = true;
+
+  const clearStats = useCallback(async () => {
+    try {
+      await Promise.all([
+        AsyncStorage.removeItem(USAGE_KEY),
+        AsyncStorage.removeItem(USAGE_DATE_KEY),
+      ]);
+      setTodayUsageSeconds(0);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   useEffect(() => {
     loadUsageData();
@@ -71,10 +90,11 @@ export function UsageProvider({ children }: { children: React.ReactNode }) {
       value={{
         plan,
         todayUsageSeconds,
-        freeLimitSeconds: FREE_DAILY_LIMIT_SECONDS,
+        freeLimitSeconds: 0,
         canPractice,
         recordUsage,
         loadUsageData,
+        clearStats,
       }}
     >
       {children}
