@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import Constants from 'expo-constants';
 import Purchases from 'react-native-purchases';
-import RevenueCatUI from 'react-native-purchases-ui';
+import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
 import { getMainResetState } from '../navigation/paywallNavigation';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -79,6 +79,27 @@ const LANGUAGE_LABELS: Record<Language, string> = {
   it: 'Italian',
   en: 'English',
 };
+
+function PresentPaywallOverlay({
+  fadeAnim,
+  onPresent,
+}: {
+  fadeAnim: Animated.Value;
+  onPresent: () => Promise<void>;
+}) {
+  const presentedRef = useRef(false);
+  useEffect(() => {
+    if (presentedRef.current) return;
+    presentedRef.current = true;
+    onPresent();
+  }, [onPresent]);
+  return (
+    <Animated.View style={[styles.container, styles.creatingPlanOverlay, { opacity: fadeAnim }]}>
+      <ActivityIndicator size="large" color="#F8F9FA" />
+      <Text style={styles.creatingPlanText}>Almost there!</Text>
+    </Animated.View>
+  );
+}
 
 const TOTAL_STEPS = 12;
 const WELCOME_STEP = 1;
@@ -359,17 +380,30 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     ]).start();
   }, [step, planTitleOpacity, planTitleTranslateY, planSubtitleOpacity, planCardOpacity, planCardTranslateY, planItemOpacities, planItemTranslateX]);
 
-  const handlePaywallDismiss = () => {
+  const handlePaywallDismiss = useCallback(() => {
     navigation.reset(getMainResetState());
-  };
+  }, [navigation]);
 
-  const handlePurchaseCompleted = async () => {
+  const handlePurchaseCompleted = useCallback(async () => {
     const rcUserId = revenueCatUserId ?? (await Purchases.getAppUserID().catch(() => null));
     if (rcUserId) {
       updatePlanToPro(rcUserId);
     }
     navigation.navigate('Congrats');
-  };
+  }, [revenueCatUserId, navigation]);
+
+  const presentPaywallImperative = useCallback(async () => {
+    try {
+      const result = await RevenueCatUI.presentPaywall({ displayCloseButton: true });
+      if (result === PAYWALL_RESULT.PURCHASED || result === PAYWALL_RESULT.RESTORED) {
+        await handlePurchaseCompleted();
+      } else {
+        handlePaywallDismiss();
+      }
+    } catch {
+      handlePaywallDismiss();
+    }
+  }, [handlePurchaseCompleted, handlePaywallDismiss]);
 
   const renderStep = () => {
     switch (step) {
@@ -595,14 +629,10 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       );
     }
     return (
-      <Animated.View style={[styles.container, styles.paywallScreen, { opacity: fadeAnim }]}>
-        <RevenueCatUI.Paywall
-          style={styles.paywallView}
-          options={{ displayCloseButton: true }}
-          onDismiss={handlePaywallDismiss}
-          onPurchaseCompleted={handlePurchaseCompleted}
-        />
-      </Animated.View>
+      <PresentPaywallOverlay
+        fadeAnim={fadeAnim}
+        onPresent={presentPaywallImperative}
+      />
     );
   }
 
