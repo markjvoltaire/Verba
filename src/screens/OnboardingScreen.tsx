@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,10 +13,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import Constants from 'expo-constants';
 import Purchases from 'react-native-purchases';
-import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
-import { getMainResetState } from '../navigation/paywallNavigation';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SLIDE_DISTANCE = SCREEN_WIDTH * 0.15;
@@ -27,7 +24,7 @@ import { getPhrases } from '../api/phrases';
 import type { Phrase } from '../api/phrases';
 import OnboardingPronunciationStep from '../components/OnboardingPronunciationStep';
 import { getLearningPlan } from '../lib/learningPlan';
-import { syncUserToBackend, updatePlanToPro } from '../api/users';
+import { syncUserToBackend } from '../api/users';
 import { useUserId } from '../context/UserContext';
 
 const LEVEL_TO_DIFFICULTY: Record<LanguageLevel, string> = {
@@ -79,27 +76,6 @@ const LANGUAGE_LABELS: Record<Language, string> = {
   it: 'Italian',
   en: 'English',
 };
-
-function PresentPaywallOverlay({
-  fadeAnim,
-  onPresent,
-}: {
-  fadeAnim: Animated.Value;
-  onPresent: () => Promise<void>;
-}) {
-  const presentedRef = useRef(false);
-  useEffect(() => {
-    if (presentedRef.current) return;
-    presentedRef.current = true;
-    onPresent();
-  }, [onPresent]);
-  return (
-    <Animated.View style={[styles.container, styles.creatingPlanOverlay, { opacity: fadeAnim }]}>
-      <ActivityIndicator size="large" color="#F8F9FA" />
-      <Text style={styles.creatingPlanText}>Almost there!</Text>
-    </Animated.View>
-  );
-}
 
 const TOTAL_STEPS = 12;
 const WELCOME_STEP = 1;
@@ -211,7 +187,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       if (rcUserId) {
         syncUserToBackend(rcUserId, profile);
       }
-      setStep(CREATING_PLAN_STEP);
+      navigation.navigate('Congrats');
     } else if (step < TOTAL_STEPS - 1) {
       prevStepRef.current = step;
       setStep(step + 1);
@@ -311,16 +287,6 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
   }, [step, learningLanguage, languageLevel]);
 
   useEffect(() => {
-    if (step !== CREATING_PLAN_STEP) return;
-    fadeAnim.setValue(0);
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 400,
-      useNativeDriver: true,
-    }).start();
-  }, [step, fadeAnim]);
-
-  useEffect(() => {
     if (step !== PLAN_DISPLAY_STEP) return;
     planTitleOpacity.setValue(0);
     planTitleTranslateY.setValue(16);
@@ -379,31 +345,6 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       ]),
     ]).start();
   }, [step, planTitleOpacity, planTitleTranslateY, planSubtitleOpacity, planCardOpacity, planCardTranslateY, planItemOpacities, planItemTranslateX]);
-
-  const handlePaywallDismiss = useCallback(() => {
-    navigation.reset(getMainResetState());
-  }, [navigation]);
-
-  const handlePurchaseCompleted = useCallback(async () => {
-    const rcUserId = revenueCatUserId ?? (await Purchases.getAppUserID().catch(() => null));
-    if (rcUserId) {
-      updatePlanToPro(rcUserId);
-    }
-    navigation.navigate('Congrats');
-  }, [revenueCatUserId, navigation]);
-
-  const presentPaywallImperative = useCallback(async () => {
-    try {
-      const result = await RevenueCatUI.presentPaywall({ displayCloseButton: true });
-      if (result === PAYWALL_RESULT.PURCHASED || result === PAYWALL_RESULT.RESTORED) {
-        await handlePurchaseCompleted();
-      } else {
-        handlePaywallDismiss();
-      }
-    } catch {
-      handlePaywallDismiss();
-    }
-  }, [handlePurchaseCompleted, handlePaywallDismiss]);
 
   const renderStep = () => {
     switch (step) {
@@ -615,26 +556,6 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
         return null;
     }
   };
-
-  if (step === CREATING_PLAN_STEP) {
-    const isExpoGo = Constants.appOwnership === 'expo';
-    if (isExpoGo) {
-      return (
-        <View style={[styles.container, styles.creatingPlanOverlay]}>
-          <Text style={styles.creatingPlanText}>Almost there!</Text>
-          <TouchableOpacity style={styles.paywallContinueButton} onPress={handlePaywallDismiss}>
-            <Text style={styles.paywallContinueText}>Continue</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-    return (
-      <PresentPaywallOverlay
-        fadeAnim={fadeAnim}
-        onPresent={presentPaywallImperative}
-      />
-    );
-  }
 
   if (step === WELCOME_STEP) {
     return (

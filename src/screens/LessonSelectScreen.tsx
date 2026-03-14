@@ -5,13 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  ActivityIndicator,
-  Alert,
 } from "react-native";
-import { usePaywallCheck } from "../hooks/usePaywallCheck";
-import { useUserId } from "../context/UserContext";
-import { updatePlanToPro } from "../api/users";
-import Purchases from "react-native-purchases";
 import { LanguageSelector } from "../components/LanguageSelector";
 
 const LESSONS: Record<
@@ -74,8 +68,6 @@ export default function LessonSelectScreen({
   const [selectedDifficulty, setSelectedDifficulty] =
     useState<DifficultyId>("easy");
   const [selectedLesson, setSelectedLesson] = useState<LessonId | null>(null);
-  const { requireProAccess, isChecking: isCheckingAccess } = usePaywallCheck();
-  const { userId: revenueCatUserId } = useUserId();
 
   const availableLessons = LESSONS[selectedDifficulty] ?? [];
   const effectiveLesson =
@@ -85,34 +77,13 @@ export default function LessonSelectScreen({
         ? (availableLessons[0].id as LessonId)
         : null;
 
-  const handleStart = async () => {
+  const handleStart = () => {
     const scenario = effectiveLesson ?? selectedLesson;
     if (!scenario) return;
-
-    const result = await requireProAccess();
-
-    if (result.granted) {
-      if (result.justPurchased) {
-        const rcUserId = revenueCatUserId ?? (await Purchases.getAppUserID().catch(() => null));
-        if (rcUserId) {
-          updatePlanToPro(rcUserId);
-        }
-        navigation.navigate("Congrats", {
-          scenario,
-          difficulty: selectedDifficulty,
-        });
-      } else {
-        navigation.navigate("PracticeList", {
-          scenario,
-          difficulty: selectedDifficulty,
-        });
-      }
-    } else if (result.error) {
-      Alert.alert(
-        "Error",
-        "Could not verify subscription. Please try again."
-      );
-    }
+    navigation.navigate("PracticeList", {
+      scenario,
+      difficulty: selectedDifficulty,
+    });
   };
 
   return (
@@ -184,16 +155,12 @@ export default function LessonSelectScreen({
       <TouchableOpacity
         style={[
           styles.startButton,
-          (!effectiveLesson || isCheckingAccess) && styles.startButtonDisabled,
+          !effectiveLesson && styles.startButtonDisabled,
         ]}
         onPress={handleStart}
-        disabled={!effectiveLesson || isCheckingAccess}
+        disabled={!effectiveLesson}
       >
-        {isCheckingAccess ? (
-          <ActivityIndicator size="small" color="#fff" />
-        ) : (
-          <Text style={styles.startButtonText}>Start lesson</Text>
-        )}
+        <Text style={styles.startButtonText}>Start lesson</Text>
       </TouchableOpacity>
     </ScrollView>
   );
