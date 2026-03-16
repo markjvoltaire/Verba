@@ -3,6 +3,7 @@ import { StyleSheet, Text, View, Pressable, Animated } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useApp } from "../context/AppContext";
 import WaveLogo from "../components/WaveLogo";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const GREETINGS = ["Hello", "Hola", "Bonjour", "Ciao"];
 const GREETING_INTERVAL_MS = 1800;
@@ -10,6 +11,7 @@ const GREETING_INTERVAL_MS = 1800;
 export default function WelcomeScreen() {
   const navigation = useNavigation();
   const { userChecked } = useApp();
+  const insets = useSafeAreaInsets();
 
   const handleGetStarted = () => {
     (navigation as any).navigate("Onboarding");
@@ -60,10 +62,12 @@ export default function WelcomeScreen() {
         <Animated.Text style={[styles.title, { opacity: greetingOpacity }]}>
           {GREETINGS[greetingIndex]} Verba
         </Animated.Text>
+        <View style={styles.glowCircle} />
         <WaveLogo
           startAnimatingAfterMs={1200}
           onAnimationStart={() => setIsAnimating(true)}
         />
+        <Text style={styles.tagline}>Speak. Learn. Grow.</Text>
       </View>
       {userChecked && isAnimating && (
         <Animated.View
@@ -72,6 +76,7 @@ export default function WelcomeScreen() {
             {
               opacity: buttonOpacity,
               transform: [{ translateY: buttonTranslateY }],
+              paddingBottom: insets.bottom + 48,
             },
           ]}
         >
@@ -90,7 +95,7 @@ export default function WelcomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#00877B",
+    backgroundColor: "#29B6F6",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -98,30 +103,54 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  glowCircle: {
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
   title: {
     fontFamily: "Georgia",
     fontSize: 28,
     fontWeight: "700",
     color: "#F8F9FA",
     marginBottom: 24,
+    textShadowColor: 'rgba(0,0,0,0.1)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  tagline: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.7)',
+    letterSpacing: 2,
+    fontWeight: '600',
+    marginTop: 16,
+    textTransform: 'uppercase',
   },
   buttonWrap: {
     position: "absolute",
-    bottom: 48,
+    bottom: 0,
     left: 32,
     right: 32,
   },
   button: {
     paddingVertical: 18,
-    borderRadius: 28,
-    backgroundColor: "#F8F9FA",
+    borderRadius: 100,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
     width: "100%",
+    shadowColor: "#1C1917",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
   },
   buttonText: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "700",
-    color: "#00877B",
+    color: "#1E90FF",
+    letterSpacing: 0.3,
   },
 });

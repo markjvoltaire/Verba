@@ -96,11 +96,11 @@ const styles = StyleSheet.create({
   selectorText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#0f172a',
+    color: '#1C1917',
   },
   chevron: {
     fontSize: 10,
-    color: '#64748b',
+    color: '#78716C',
   },
   modalOverlay: {
     flex: 1,
@@ -110,16 +110,17 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
     padding: 24,
     width: '100%',
     maxWidth: 320,
   },
   modalTitle: {
-    fontSize: 18,
+    fontFamily: 'Georgia',
+    fontSize: 22,
     fontWeight: '700',
-    color: '#0f172a',
+    color: '#1C1917',
     marginBottom: 20,
     textAlign: 'center',
   },
@@ -127,12 +128,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 14,
     marginBottom: 8,
     gap: 12,
   },
   optionSelected: {
-    backgroundColor: '#e6f7f6',
+    backgroundColor: 'rgba(41, 182, 246, 0.1)',
   },
   optionFlag: {
     fontSize: 24,
@@ -140,7 +141,7 @@ const styles = StyleSheet.create({
   optionLabel: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#0f172a',
+    color: '#1C1917',
   },
   cancelButton: {
     marginTop: 16,
@@ -149,6 +150,6 @@ const styles = StyleSheet.create({
   },
   cancelText: {
     fontSize: 16,
-    color: '#64748b',
+    color: '#78716C',
   },
 });

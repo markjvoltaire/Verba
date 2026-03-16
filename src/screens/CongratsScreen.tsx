@@ -59,7 +59,7 @@ export default function CongratsScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#00877B",
+    backgroundColor: "#29B6F6",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -73,16 +73,18 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   title: {
-    fontSize: 28,
+    fontFamily: "Georgia",
+    fontSize: 30,
     fontWeight: "700",
-    color: "#fff",
+    color: "#FFFFFF",
     textAlign: "center",
     marginBottom: 12,
+    letterSpacing: -0.5,
   },
   subtitle: {
     fontSize: 18,
     fontWeight: "500",
-    color: "rgba(255,255,255,0.9)",
+    color: "rgba(253, 251, 247, 0.9)",
     textAlign: "center",
   },
   confettiOverlay: {

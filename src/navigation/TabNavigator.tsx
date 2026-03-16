@@ -1,12 +1,19 @@
 import React from 'react';
 import {
   createBottomTabNavigator,
-  BottomTabBar,
   BottomTabBarProps,
 } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
-import { Text, View } from 'react-native';
+import {
+  Text,
+  View,
+  Pressable,
+  StyleSheet,
+  Platform,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import WaveLogo from '../components/WaveLogo';
 import ProgressScreen from '../screens/ProgressScreen';
 import PracticeScreen from '../screens/PracticeScreen';
@@ -16,12 +23,19 @@ import FlashcardsScreen from '../screens/FlashcardsScreen';
 import ScenarioScreen from '../screens/ScenarioScreen';
 import SpeakModeSelectScreen from '../screens/SpeakModeSelectScreen';
 import LessonSelectScreen from '../screens/LessonSelectScreen';
+import TranslateScreen from '../screens/TranslateScreen';
 
 const Tab = createBottomTabNavigator();
 const SpeakStack = createNativeStackNavigator();
 const ProgressStack = createNativeStackNavigator();
 
+const ACTIVE_COLOR = '#29B6F6';
+const INACTIVE_COLOR = '#9CA3AF';
+const TAB_BAR_BG = '#FFFFFF';
+const ACTIVE_PILL_BG = 'rgba(41, 182, 246, 0.12)';
+
 function CustomTabBar(props: BottomTabBarProps) {
+  const insets = useSafeAreaInsets();
   const activeRoute = props.state.routes[props.state.index];
   const focusedRouteName =
     getFocusedRouteNameFromRoute(activeRoute) ?? 'LessonSelect';
@@ -32,7 +46,71 @@ function CustomTabBar(props: BottomTabBarProps) {
     return null;
   }
 
-  return <BottomTabBar {...props} />;
+  return (
+    <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={styles.tabBarInner}>
+        {props.state.routes.map((route, index) => {
+          const { options } = props.descriptors[route.key];
+          const isFocused = props.state.index === index;
+          const rawLabel = options.tabBarLabel ?? options.title ?? route.name;
+          const label = typeof rawLabel === 'string' ? rawLabel : route.name;
+
+          const onPress = () => {
+            const event = props.navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
+
+            if (!isFocused && !event.defaultPrevented) {
+              props.navigation.navigate(route.name);
+            }
+          };
+
+          const onLongPress = () => {
+            props.navigation.emit({
+              type: 'tabLongPress',
+              target: route.key,
+            });
+          };
+
+          const color = isFocused ? ACTIVE_COLOR : INACTIVE_COLOR;
+          const icon = options.tabBarIcon?.({ focused: isFocused, color, size: 22 });
+
+          return (
+            <Pressable
+              key={route.key}
+              onPress={onPress}
+              onLongPress={onLongPress}
+              style={({ pressed }) => [
+                styles.tabItem,
+                pressed && styles.tabItemPressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityState={isFocused ? { selected: true } : {}}
+              accessibilityLabel={options.tabBarAccessibilityLabel ?? String(label)}
+            >
+              <View style={[styles.tabContentWrap, isFocused && styles.tabContentWrapActive]}>
+                <View style={styles.tabIconWrap}>
+                  {icon}
+                </View>
+                <Text
+                  style={[
+                    styles.tabLabel,
+                    { color },
+                    isFocused && styles.tabLabelActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {label}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
 }
 
 function SpeakStackScreen() {
@@ -64,23 +142,19 @@ export default function TabNavigator() {
       tabBar={(props) => <CustomTabBar {...props} />}
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#00877B',
-        tabBarInactiveTintColor: '#94a3b8',
-        tabBarStyle: {
-          backgroundColor: '#F8F9FA',
-          borderTopColor: '#e2e8f0',
-        },
       }}
     >
       <Tab.Screen
         name="Speak"
         component={SpeakStackScreen}
         options={{
-          tabBarLabel: 'Speak',
-          tabBarIcon: ({ color }) => (
-            <View style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}>
-              <WaveLogo size={24} animated={false} fill={color} />
-            </View>
+          tabBarLabel: 'Home',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'home' : 'home-outline'}
+              size={20}
+              color={color}
+            />
           ),
         }}
       />
@@ -89,15 +163,41 @@ export default function TabNavigator() {
         component={GlossaryScreen}
         options={{
           tabBarLabel: 'Vocab',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20 }}>📖</Text>,
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'book' : 'book-outline'}
+              size={20}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Translate"
+        component={TranslateScreen}
+        options={{
+          tabBarLabel: 'Translate',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'language' : 'language-outline'}
+              size={20}
+              color={color}
+            />
+          ),
         }}
       />
       <Tab.Screen
         name="Flashcards"
         component={FlashcardsScreen}
         options={{
-          tabBarLabel: 'Flashcards',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20 }}>📚</Text>,
+          tabBarLabel: 'Cards',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'layers' : 'layers-outline'}
+              size={20}
+              color={color}
+            />
+          ),
         }}
       />
       <Tab.Screen
@@ -105,9 +205,80 @@ export default function TabNavigator() {
         component={ProgressStackScreen}
         options={{
           tabBarLabel: 'Progress',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20 }}>📊</Text>,
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'stats-chart' : 'stats-chart-outline'}
+              size={20}
+              color={color}
+            />
+          ),
         }}
       />
     </Tab.Navigator>
   );
 }
+
+const styles = StyleSheet.create({
+  tabBar: {
+    backgroundColor: TAB_BAR_BG,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -4 },
+        shadowOpacity: 0.06,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 12,
+      },
+    }),
+  },
+  tabBarInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+  },
+  tabItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+  },
+  tabItemPressed: {
+    opacity: 0.8,
+  },
+  tabContentWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 24,
+  },
+  tabContentWrapActive: {
+    backgroundColor: ACTIVE_PILL_BG,
+  },
+  tabIconWrap: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  iconContainer: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  tabLabelActive: {
+    fontWeight: '700',
+  },
+});

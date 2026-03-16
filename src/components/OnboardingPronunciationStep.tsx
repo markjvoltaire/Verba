@@ -419,7 +419,7 @@ export default function OnboardingPronunciationStep({
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#00877B" />
+          <ActivityIndicator size="large" color="#29B6F6" />
           <Text style={styles.loadingText}>Loading phrase...</Text>
         </View>
       </View>
@@ -435,7 +435,7 @@ export default function OnboardingPronunciationStep({
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.logoSection}>
           <WaveLogo
-            fill="#00877B"
+            fill="#29B6F6"
             animated={ttsPlaying || replayLoading}
           />
         </View>
@@ -489,7 +489,7 @@ export default function OnboardingPronunciationStep({
 
           {phase === 'evaluating' && (
             <View style={styles.evaluatingSection}>
-              <ActivityIndicator size="large" color="#00877B" />
+              <ActivityIndicator size="large" color="#29B6F6" />
               <Text style={styles.statusText}>{pStrings.checking}</Text>
             </View>
           )}
@@ -622,7 +622,7 @@ const styles = StyleSheet.create({
   },
   backText: {
     fontSize: 16,
-    color: '#00877B',
+    color: '#29B6F6',
     fontWeight: '600',
   },
   loadingContainer: {
@@ -669,8 +669,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   phraseWordHighlight: {
-    color: '#00877B',
-    backgroundColor: 'rgba(0, 135, 123, 0.15)',
+    color: '#29B6F6',
+    backgroundColor: 'rgba(41, 182, 246, 0.15)',
   },
   phraseTranslation: {
     fontSize: 16,
@@ -684,7 +684,7 @@ const styles = StyleSheet.create({
   },
   replayButtonText: {
     fontSize: 15,
-    color: '#00877B',
+    color: '#29B6F6',
     fontWeight: '600',
   },
   replayButtonTextDisabled: {
@@ -705,7 +705,7 @@ const styles = StyleSheet.create({
   feedbackCorrect: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#00877B',
+    color: '#29B6F6',
   },
   feedbackHeard: {
     fontSize: 15,
@@ -745,7 +745,7 @@ const styles = StyleSheet.create({
     height: 104,
     borderRadius: 52,
     borderWidth: 2,
-    borderColor: '#00877B',
+    borderColor: '#29B6F6',
     borderStyle: 'dashed',
     opacity: 0.8,
   },
@@ -757,7 +757,7 @@ const styles = StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: 44,
-    backgroundColor: '#00877B',
+    backgroundColor: '#29B6F6',
   },
   holdButtonHint: {
     marginTop: 12,
@@ -784,11 +784,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 24,
     borderWidth: 2,
-    borderColor: '#00877B',
+    borderColor: '#29B6F6',
   },
   tryAgainButtonText: {
     fontSize: 16,
-    color: '#00877B',
+    color: '#29B6F6',
     fontWeight: '600',
   },
   skipButton: {
@@ -796,17 +796,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 24,
     borderWidth: 2,
-    borderColor: '#00877B',
+    borderColor: '#29B6F6',
   },
   skipButtonText: {
     fontSize: 16,
-    color: '#00877B',
+    color: '#29B6F6',
     fontWeight: '600',
   },
   continueButton: {
     paddingVertical: 14,
     paddingHorizontal: 28,
-    backgroundColor: '#00877B',
+    backgroundColor: '#29B6F6',
     borderRadius: 24,
   },
   continueButtonText: {

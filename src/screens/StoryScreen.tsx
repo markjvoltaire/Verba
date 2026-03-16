@@ -33,7 +33,7 @@ export default function StoryScreen({
 
   if (!story) {
     return (
-      <View style={[styles.container, { padding: 24, paddingTop: 60 }]}>
+      <View style={[styles.container, { padding: 20, paddingTop: 52 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={12}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
@@ -211,28 +211,28 @@ export default function StoryScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#FFFFFF',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 60,
+    paddingTop: 52,
     paddingBottom: 16,
     gap: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
+    borderBottomColor: 'rgba(28, 25, 23, 0.08)',
   },
   backText: {
     fontSize: 16,
-    color: '#00877B',
+    color: '#29B6F6',
     fontWeight: '600',
   },
   storyTitle: {
     flex: 1,
     fontSize: 18,
-    fontWeight: '600',
-    color: '#0f172a',
+    fontWeight: '700',
+    color: '#1C1917',
   },
   scroll: {
     flex: 1,
@@ -248,17 +248,17 @@ const styles = StyleSheet.create({
   chunkText: {
     fontSize: 22,
     lineHeight: 34,
-    color: '#64748b',
+    color: '#57534E',
   },
   chunkRead: {
-    color: '#94a3b8',
+    color: '#A8A29E',
   },
   chunkCurrent: {
-    color: '#0f172a',
-    fontWeight: '600',
+    color: '#1C1917',
+    fontWeight: '700',
   },
   chunkUpcoming: {
-    color: '#cbd5e1',
+    color: '#D6D3D1',
   },
   controls: {
     position: 'absolute',
@@ -267,9 +267,9 @@ const styles = StyleSheet.create({
     right: 0,
     padding: 24,
     paddingBottom: 40,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
+    borderTopColor: 'rgba(28, 25, 23, 0.08)',
   },
   progressRow: {
     alignItems: 'center',
@@ -277,7 +277,7 @@ const styles = StyleSheet.create({
   },
   progressText: {
     fontSize: 14,
-    color: '#64748b',
+    color: '#57534E',
     fontWeight: '500',
   },
   buttonsRow: {
@@ -289,8 +289,8 @@ const styles = StyleSheet.create({
   controlBtn: {
     width: 48,
     height: 48,
-    borderRadius: 24,
-    backgroundColor: '#e2e8f0',
+    borderRadius: 14,
+    backgroundColor: 'rgba(41, 182, 246, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -303,10 +303,15 @@ const styles = StyleSheet.create({
   playButton: {
     width: 72,
     height: 72,
-    borderRadius: 36,
-    backgroundColor: '#00877B',
+    borderRadius: 18,
+    backgroundColor: '#29B6F6',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#29B6F6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 4,
   },
   playButtonText: {
     fontSize: 28,
@@ -318,7 +323,7 @@ const styles = StyleSheet.create({
   },
   restartBtnText: {
     fontSize: 14,
-    color: '#00877B',
+    color: '#29B6F6',
     fontWeight: '600',
   },
 });

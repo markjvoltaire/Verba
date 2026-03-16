@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import LottieView from "lottie-react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   useAudioPlayer,
@@ -62,6 +63,34 @@ const TTS_LANG: Record<string, string> = {
 };
 
 const SCORE_THRESHOLD = 70;
+
+function LoaderDot({ delay }: { delay: number }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.timing(anim, { toValue: -7, duration: 280, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0, duration: 280, useNativeDriver: true }),
+        Animated.delay(Math.max(0, 560 - delay)),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [anim, delay]);
+  return (
+    <Animated.View
+      style={[loaderDotStyle, { transform: [{ translateY: anim }] }]}
+    />
+  );
+}
+const loaderDotStyle = {
+  width: 8,
+  height: 8,
+  borderRadius: 4,
+  backgroundColor: "#29B6F6",
+  opacity: 0.7,
+};
 
 type Phase =
   | "loading"
@@ -699,17 +728,53 @@ export default function PracticeScreen({
     return (
       <View style={styles.container}>
         <TouchableOpacity
-          style={[styles.backButton, { top: insets.top }]}
+          style={[
+            styles.backButton,
+            styles.backButtonAbsolute,
+            { top: insets.top + 8 },
+          ]}
           onPress={() => handleBack(navigation)}
-          hitSlop={12}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
+
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#00877B" />
-          <Text style={styles.loadingText}>
-            {phase === "intro" ? "Preparing audio..." : "Loading lesson..."}
-          </Text>
+          <View style={styles.loaderCard}>
+            <WaveLogo fill="#29B6F6" animated />
+
+            <Text style={styles.loaderLesson}>{lessonLabel}</Text>
+
+            <View
+              style={[
+                styles.loaderBadge,
+                difficulty === "easy" && styles.loaderBadgeEasy,
+                difficulty === "medium" && styles.loaderBadgeMedium,
+                difficulty === "hard" && styles.loaderBadgeHard,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.loaderBadgeText,
+                  difficulty === "easy" && styles.loaderBadgeTextEasy,
+                  difficulty === "medium" && styles.loaderBadgeTextMedium,
+                  difficulty === "hard" && styles.loaderBadgeTextHard,
+                ]}
+              >
+                {difficultyLabel}
+              </Text>
+            </View>
+
+            <Text style={styles.loaderStatus}>
+              {phase === "intro" ? "Preparing audio…" : "Loading lesson…"}
+            </Text>
+
+            <View style={styles.loaderDots}>
+              {[0, 1, 2].map((i) => (
+                <LoaderDot key={i} delay={i * 160} />
+              ))}
+            </View>
+          </View>
         </View>
       </View>
     );
@@ -717,151 +782,177 @@ export default function PracticeScreen({
 
   return (
     <View style={styles.container}>
-      <View
-        style={[styles.topBar, { top: insets.top }]}
-        pointerEvents="box-none"
-      >
-        <Text style={styles.topBarText}>{lessonLabel}</Text>
-        <Text style={styles.topBarDivider}>•</Text>
-        <Text style={styles.topBarText}>{difficultyLabel}</Text>
-      </View>
-
-      <TouchableOpacity
-        style={[styles.backButton, { top: insets.top }]}
-        onPress={() => handleBack(navigation)}
-        hitSlop={12}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.backText}>← Back</Text>
-      </TouchableOpacity>
-
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.logoSection}>
-          {(phase === "intro" ||
-            phase === "prompt" ||
-            phase === "listening" ||
-            phase === "evaluating" ||
-            phase === "correct" ||
-            phase === "incorrect" ||
-            phase === "complete") && (
-            <WaveLogo
-              fill="#00877B"
-              animated={phase !== "complete" && (ttsPlaying || replayLoading)}
-            />
+      {/* ── TOP BAR ── */}
+      <View style={[styles.topBar, { paddingTop: insets.top }]}>
+        <TouchableOpacity
+          onPress={() => handleBack(navigation)}
+          hitSlop={12}
+          activeOpacity={0.7}
+          style={styles.backBtn}
+        >
+          <Ionicons name="chevron-back" size={20} color="#374151" />
+        </TouchableOpacity>
+        <View style={styles.topBarCenter}>
+          <Text style={styles.topBarText}>{lessonLabel}</Text>
+          {phrases.length > 0 && phase !== "complete" && (
+            <Text style={styles.topBarSub}>
+              {phraseIndex + 1} / {phrases.length}
+            </Text>
           )}
         </View>
+        <View style={styles.backBtn} />
+      </View>
 
-        <View style={styles.mainContentSlot}>
-          {(phase === "prompt" || phase === "listening") && phrase && (
-            <Animated.View
-              style={[
-                styles.phraseSection,
-                {
-                  opacity: promptOpacity,
-                  transform: [{ translateY: promptTranslateY }],
-                },
-              ]}
-            >
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 160 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* WaveLogo — only show when audio playing */}
+        {(ttsPlaying || replayLoading) && (
+          <View style={styles.logoSection}>
+            <WaveLogo fill="#29B6F6" animated />
+          </View>
+        )}
+
+        {/* ── PHRASE CARD ── */}
+        {(phase === "prompt" || phase === "listening") && phrase && (
+          <Animated.View
+            style={[
+              styles.phraseCard,
+              { opacity: promptOpacity, transform: [{ translateY: promptTranslateY }] },
+            ]}
+          >
+            {/* Card header: label + listen icon */}
+            <View style={styles.phraseCardHeader}>
               <Text style={styles.phraseLabel}>
-                {phase === "listening" ? "Listening..." : "Say this:"}
+                {phase === "listening" ? "Listening…" : "Say this"}
               </Text>
-              <Text style={styles.phraseText}>
-                {(phrase.phrase.split(/\s+/).filter(Boolean) as string[]).map(
-                  (word, i, words) => (
-                    <Text
-                      key={i}
-                      style={
-                        ttsPlaying && i === currentWordIndex
-                          ? [styles.phraseText, styles.phraseWordHighlight]
-                          : styles.phraseText
-                      }
-                    >
-                      {word}
-                      {i < words.length - 1 ? " " : ""}
-                    </Text>
-                  ),
-                )}
-              </Text>
-              {phrase.translation && (
-                <Text style={styles.phraseTranslation}>
-                  {phrase.translation}
-                </Text>
-              )}
               <TouchableOpacity
-                style={styles.replayButton}
+                style={[
+                  styles.listenIconBtn,
+                  (ttsPlaying || phase === "listening") && styles.listenIconBtnDisabled,
+                ]}
                 onPress={handleReplay}
                 disabled={ttsPlaying || phase === "listening"}
                 activeOpacity={0.7}
               >
-                <Text
-                  style={[
-                    styles.replayButtonText,
-                    (ttsPlaying || phase === "listening") &&
-                      styles.replayButtonTextDisabled,
-                  ]}
-                >
-                  {replayLoading && !ttsPlaying ? "Loading..." : "Listen again"}
-                </Text>
+                <Ionicons
+                  name={replayLoading && !ttsPlaying ? "hourglass-outline" : "volume-high"}
+                  size={18}
+                  color={ttsPlaying || phase === "listening" ? "#D1D5DB" : "#29B6F6"}
+                />
               </TouchableOpacity>
-            </Animated.View>
-          )}
-
-          {phase === "evaluating" && (
-            <View style={styles.evaluatingSection}>
-              <ActivityIndicator size="large" color="#00877B" />
-              <Text style={styles.statusText}>
-                Checking your pronunciation...
-              </Text>
             </View>
-          )}
 
-          {(phase === "correct" || phase === "incorrect") && feedback && (
-            <View style={styles.feedbackSection}>
-              {feedback.score >= SCORE_THRESHOLD ? (
-                <>
-                  {feedback.transcription ? (
-                    <Text style={styles.feedbackHeard}>
-                      Heard: "{feedback.transcription}"
-                    </Text>
-                  ) : null}
-                  <Text style={styles.feedbackCorrect}>
-                    {feedbackPhrases.correct}
+            {/* The phrase (target language) */}
+            <Text style={styles.phraseText}>
+              {(phrase.phrase.split(/\s+/).filter(Boolean) as string[]).map(
+                (word, i, words) => (
+                  <Text
+                    key={i}
+                    style={
+                      ttsPlaying && i === currentWordIndex
+                        ? [styles.phraseText, styles.phraseWordHighlight]
+                        : styles.phraseText
+                    }
+                  >
+                    {word}
+                    {i < words.length - 1 ? " " : ""}
                   </Text>
-                  <Text style={styles.feedbackScore}>
-                    Score: {feedback.score}/100
-                  </Text>
-                </>
-              ) : (
-                <>
-                  {feedback.transcription ? (
-                    <Text style={styles.feedbackHeard}>
-                      Heard: "{feedback.transcription}"
-                    </Text>
-                  ) : null}
-                  <Text style={styles.feedbackIncorrect}>
-                    {feedback.feedback}
-                  </Text>
-                  <Text style={styles.feedbackScore}>
-                    Score: {feedback.score}/100
-                  </Text>
-                </>
+                ),
               )}
-            </View>
-          )}
+            </Text>
 
-          {phase === "complete" && (
-            <View style={styles.completeSection}>
-              <Text style={styles.completeTitle}>Lesson complete!</Text>
-              <Text style={styles.completeSubtitle}>
-                You practiced {phrases.length} phrase
-                {phrases.length !== 1 ? "s" : ""}.
+            {/* Divider + translation */}
+            {phrase.translation && (
+              <>
+                <View style={styles.phraseDivider} />
+                <Text style={styles.translationLabel}>Translation</Text>
+                <Text style={styles.phraseTranslation}>
+                  {phrase.translation}
+                </Text>
+              </>
+            )}
+          </Animated.View>
+        )}
+
+        {/* ── EVALUATING ── */}
+        {phase === "evaluating" && (
+          <View style={styles.evaluatingSection}>
+            <View style={styles.evaluatingIcon}>
+              <ActivityIndicator size="large" color="#29B6F6" />
+            </View>
+            <Text style={styles.evaluatingTitle}>Checking…</Text>
+            <Text style={styles.evaluatingSub}>Scoring your pronunciation</Text>
+          </View>
+        )}
+
+        {/* ── FEEDBACK ── */}
+        {(phase === "correct" || phase === "incorrect") && feedback && (
+          <View style={styles.feedbackCard}>
+            {/* Score badge */}
+            <View
+              style={[
+                styles.scoreBadge,
+                feedback.score >= SCORE_THRESHOLD
+                  ? styles.scoreBadgeGood
+                  : styles.scoreBadgePoor,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.scoreNum,
+                  feedback.score >= SCORE_THRESHOLD
+                    ? styles.scoreNumGood
+                    : styles.scoreNumPoor,
+                ]}
+              >
+                {feedback.score}
+              </Text>
+              <Text
+                style={[
+                  styles.scoreLabel,
+                  feedback.score >= SCORE_THRESHOLD
+                    ? styles.scoreNumGood
+                    : styles.scoreNumPoor,
+                ]}
+              >
+                / 100
               </Text>
             </View>
-          )}
-        </View>
+
+            <Text
+              style={[
+                styles.feedbackHeadline,
+                feedback.score >= SCORE_THRESHOLD
+                  ? styles.feedbackHeadlineGood
+                  : styles.feedbackHeadlinePoor,
+              ]}
+            >
+              {feedback.score >= SCORE_THRESHOLD
+                ? feedbackPhrases.correct
+                : feedback.feedback}
+            </Text>
+
+            {feedback.transcription ? (
+              <Text style={styles.feedbackHeard}>
+                Heard: "{feedback.transcription}"
+              </Text>
+            ) : null}
+          </View>
+        )}
+
+        {/* ── COMPLETE ── */}
+        {phase === "complete" && (
+          <View style={styles.completeSection}>
+            <Text style={styles.completeEmoji}>🎉</Text>
+            <Text style={styles.completeTitle}>Lesson complete!</Text>
+            <Text style={styles.completeSubtitle}>
+              You practiced {phrases.length} phrase
+              {phrases.length !== 1 ? "s" : ""}.
+            </Text>
+          </View>
+        )}
       </ScrollView>
 
       {(phase === "prompt" || phase === "listening") && (
@@ -1012,7 +1103,7 @@ export default function PracticeScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "#F0F4F8",
   },
   confettiOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1027,150 +1118,274 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-    paddingTop: 100,
-    paddingBottom: 120,
+    paddingHorizontal: 20,
+    paddingTop: 24,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: 32,
   },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: "#64748b",
+  loaderCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding: 32,
+    alignItems: "center",
+    width: "100%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
+    gap: 12,
+  },
+  loaderLesson: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#111827",
+    textAlign: "center",
+    letterSpacing: -0.3,
+    marginTop: 4,
+  },
+  loaderBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 20,
+    backgroundColor: "#F3F4F6",
+  },
+  loaderBadgeEasy: { backgroundColor: "#DCFCE7" },
+  loaderBadgeMedium: { backgroundColor: "#FEF3C7" },
+  loaderBadgeHard: { backgroundColor: "#FEE2E2" },
+  loaderBadgeText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
+  loaderBadgeTextEasy: { color: "#16A34A" },
+  loaderBadgeTextMedium: { color: "#D97706" },
+  loaderBadgeTextHard: { color: "#DC2626" },
+  loaderStatus: {
+    fontSize: 14,
+    color: "#9CA3AF",
+    marginTop: 4,
+  },
+  loaderDots: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8,
+  },
+  // ── TOP BAR ──────────────────────────────────────────────────────────────────
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    backgroundColor: "#F0F4F8",
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  topBarCenter: {
+    flex: 1,
+    alignItems: "center",
+  },
+  topBarText: {
+    fontSize: 15,
+    color: "#111827",
+    fontWeight: "700",
+  },
+  topBarSub: {
+    fontSize: 12,
+    color: "#9CA3AF",
+    marginTop: 1,
   },
   backButton: {
+    minHeight: 36,
+    paddingHorizontal: 4,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  backButtonAbsolute: {
     position: "absolute",
-    left: 20,
+    left: 16,
     zIndex: 10,
   },
   backText: {
     fontSize: 16,
-    color: "#00877B",
+    color: "#29B6F6",
     fontWeight: "600",
   },
-  topBar: {
-    position: "absolute",
-    left: 0,
-    right: 0,
+
+  // ── SCROLL ───────────────────────────────────────────────────────────────────
+  logoSection: {
+    marginBottom: 20,
+  },
+
+  // ── PHRASE CARD ───────────────────────────────────────────────────────────────
+  phraseCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 24,
+    width: "100%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    elevation: 3,
+    marginBottom: 16,
+  },
+  phraseCardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingTop: 36,
-    zIndex: 1,
-  },
-  topBarText: {
-    fontSize: 15,
-    color: "#0f172a",
-    fontWeight: "600",
-  },
-  topBarDivider: {
-    fontSize: 12,
-    color: "#64748b",
-  },
-  logoSection: {
-    marginBottom: 24,
-  },
-  mainContentSlot: {
-    height: 220,
-    width: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  phraseSection: {
-    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
   },
   phraseLabel: {
-    fontSize: 14,
-    color: "#64748b",
-    marginBottom: 8,
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#9CA3AF",
     textTransform: "uppercase",
-    letterSpacing: 0.5,
+    letterSpacing: 1,
+  },
+  listenIconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(41, 182, 246, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  listenIconBtnDisabled: {
+    backgroundColor: "#F3F4F6",
   },
   phraseText: {
-    fontSize: 28,
+    fontFamily: "Georgia",
+    fontSize: 30,
     fontWeight: "700",
-    color: "#0f172a",
+    color: "#111827",
     textAlign: "center",
+    letterSpacing: -0.5,
+    lineHeight: 40,
   },
   phraseWordHighlight: {
-    color: "#00877B",
-    backgroundColor: "rgba(0, 135, 123, 0.15)",
+    color: "#29B6F6",
+    backgroundColor: "rgba(41, 182, 246, 0.12)",
   },
-  phraseTranslation: {
-    fontSize: 16,
-    color: "#64748b",
-    marginTop: 8,
+  phraseDivider: {
+    height: 1,
+    backgroundColor: "#F3F4F6",
+    marginVertical: 20,
   },
-  replayButton: {
-    marginTop: 16,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  replayButtonText: {
-    fontSize: 15,
-    color: "#00877B",
-    fontWeight: "600",
-  },
-  replayButtonTextDisabled: {
-    color: "#94a3b8",
-  },
-  statusText: {
-    fontSize: 18,
-    color: "#64748b",
-    marginTop: 16,
-  },
-  evaluatingSection: {
-    alignItems: "center",
-  },
-  feedbackSection: {
-    alignItems: "center",
-    paddingHorizontal: 24,
-  },
-  feedbackCorrect: {
-    fontSize: 22,
+  translationLabel: {
+    fontSize: 11,
     fontWeight: "700",
-    color: "#00877B",
-  },
-  feedbackHeard: {
-    fontSize: 15,
-    color: "#64748b",
-    textAlign: "center",
-    fontStyle: "italic",
+    color: "#9CA3AF",
+    textTransform: "uppercase",
+    letterSpacing: 1,
     marginBottom: 8,
   },
-  feedbackIncorrect: {
-    fontSize: 18,
-    color: "#0f172a",
+  phraseTranslation: {
+    fontSize: 22,
+    color: "#374151",
     textAlign: "center",
+    lineHeight: 30,
+    fontWeight: "500",
   },
-  feedbackScore: {
+
+  // ── EVALUATING ────────────────────────────────────────────────────────────────
+  evaluatingSection: {
+    alignItems: "center",
+    paddingVertical: 40,
+    gap: 16,
+  },
+  evaluatingIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "rgba(41, 182, 246, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  evaluatingTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  evaluatingSub: {
     fontSize: 14,
-    color: "#64748b",
-    marginTop: 8,
+    color: "#9CA3AF",
   },
-  tryAgainHint: {
+
+  // ── FEEDBACK CARD ─────────────────────────────────────────────────────────────
+  feedbackCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 24,
+    width: "100%",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    elevation: 3,
+    gap: 12,
+    marginBottom: 16,
+  },
+  scoreBadge: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 2,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 16,
+  },
+  scoreBadgeGood: { backgroundColor: "rgba(34, 197, 94, 0.1)" },
+  scoreBadgePoor: { backgroundColor: "rgba(239, 68, 68, 0.08)" },
+  scoreNum: {
+    fontSize: 36,
+    fontWeight: "800",
+  },
+  scoreLabel: {
     fontSize: 16,
-    color: "#00877B",
-    marginTop: 12,
     fontWeight: "600",
   },
+  scoreNumGood: { color: "#16A34A" },
+  scoreNumPoor: { color: "#DC2626" },
+  feedbackHeadline: {
+    fontSize: 20,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  feedbackHeadlineGood: { color: "#111827" },
+  feedbackHeadlinePoor: { color: "#374151" },
+  feedbackHeard: {
+    fontSize: 14,
+    color: "#9CA3AF",
+    textAlign: "center",
+    fontStyle: "italic",
+  },
+
+  // ── COMPLETE ──────────────────────────────────────────────────────────────────
   completeSection: {
     alignItems: "center",
+    paddingVertical: 40,
+    gap: 12,
+  },
+  completeEmoji: {
+    fontSize: 48,
   },
   completeTitle: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: "700",
-    color: "#0f172a",
+    color: "#111827",
   },
   completeSubtitle: {
     fontSize: 16,
-    color: "#64748b",
-    marginTop: 8,
+    color: "#6B7280",
   },
   bottomSection: {
     position: "absolute",
@@ -1191,7 +1406,7 @@ const styles = StyleSheet.create({
     height: 104,
     borderRadius: 52,
     borderWidth: 2,
-    borderColor: "#00877B",
+    borderColor: "#29B6F6",
     borderStyle: "dashed",
     opacity: 0.8,
   },
@@ -1203,12 +1418,12 @@ const styles = StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: 44,
-    backgroundColor: "#00877B",
+    backgroundColor: "#29B6F6",
   },
   holdButtonHint: {
     marginTop: 12,
     fontSize: 14,
-    color: "#64748b",
+    color: "#57534E",
     fontWeight: "500",
   },
   correctActions: {
@@ -1223,11 +1438,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 24,
     borderWidth: 2,
-    borderColor: "#00877B",
+    borderColor: "#29B6F6",
   },
   tryAgainButtonText: {
     fontSize: 16,
-    color: "#00877B",
+    color: "#29B6F6",
     fontWeight: "600",
   },
   flashcardsButton: {
@@ -1235,15 +1450,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 24,
     borderWidth: 2,
-    borderColor: "#00877B",
+    borderColor: "#29B6F6",
   },
   flashcardsButtonActive: {
-    backgroundColor: "#00877B",
-    borderColor: "#00877B",
+    backgroundColor: "#29B6F6",
+    borderColor: "#29B6F6",
   },
   flashcardsButtonText: {
     fontSize: 16,
-    color: "#00877B",
+    color: "#29B6F6",
     fontWeight: "600",
   },
   flashcardsButtonTextActive: {
@@ -1252,7 +1467,7 @@ const styles = StyleSheet.create({
   continueButton: {
     paddingVertical: 14,
     paddingHorizontal: 28,
-    backgroundColor: "#00877B",
+    backgroundColor: "#29B6F6",
     borderRadius: 24,
   },
   continueButtonText: {
@@ -1263,7 +1478,7 @@ const styles = StyleSheet.create({
   doneButton: {
     paddingVertical: 14,
     paddingHorizontal: 32,
-    backgroundColor: "#00877B",
+    backgroundColor: "#29B6F6",
     borderRadius: 24,
   },
   doneButtonText: {

@@ -26,11 +26,11 @@ import { useStreak } from '../context/StreakContext';
 import { useUsage } from '../context/UsageContext';
 
 const SCENARIOS = [
-  { id: 'restaurant', label: 'Restaurant' },
-  { id: 'airport', label: 'Airport' },
-  { id: 'hotel', label: 'Hotel' },
-  { id: 'small_talk', label: 'Small talk' },
-  { id: 'dating', label: 'Dating' },
+  { id: 'restaurant', label: 'Restaurant', icon: '🍽', color: '#FFF3E0' },
+  { id: 'airport', label: 'Airport', icon: '✈️', color: '#E3F2FD' },
+  { id: 'hotel', label: 'Hotel', icon: '🏨', color: '#F3E5F5' },
+  { id: 'small_talk', label: 'Small talk', icon: '💬', color: '#E8F5E9' },
+  { id: 'dating', label: 'Dating', icon: '❤️', color: '#FCE4EC' },
 ];
 
 export default function ScenarioScreen({ navigation }: { navigation: any }) {
@@ -181,30 +181,50 @@ export default function ScenarioScreen({ navigation }: { navigation: any }) {
 
   if (!scenario) {
     return (
-      <View style={[styles.container, { padding: 24, paddingTop: 60 + insets.top }]}>
-        <TouchableOpacity
-          style={[styles.backButton, { top: insets.top }]}
-          onPress={() => navigation.goBack()}
-          hitSlop={12}
+      <View style={styles.container}>
+        {/* Blue header */}
+        <View style={[styles.selectionHeader, { paddingTop: insets.top + 12 }]}>
+          <View style={styles.selectionHeaderTop}>
+            <TouchableOpacity
+              style={styles.headerBackButton}
+              onPress={() => navigation.goBack()}
+              hitSlop={12}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.headerBackIcon}>←</Text>
+            </TouchableOpacity>
+            <View style={styles.selectionHeaderTitles}>
+              <Text style={styles.selectionTitle}>AI Conversation</Text>
+              <Text style={styles.selectionSubtitle}>Practice real situations</Text>
+            </View>
+          </View>
+        </View>
+
+        <ScrollView
+          style={styles.selectionScroll}
+          contentContainerStyle={styles.selectionContent}
+          showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.backButtonText}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>Choose a scenario</Text>
-        <Text style={styles.subtitle}>Practice conversations in real-life situations</Text>
-        {SCENARIOS.map((s) => (
-          <TouchableOpacity
-            key={s.id}
-            style={styles.scenarioOption}
-            onPress={() => loadOpening(s.id)}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="#00877B" />
-            ) : (
-              <Text style={styles.scenarioOptionText}>{s.label}</Text>
-            )}
-          </TouchableOpacity>
-        ))}
+          {SCENARIOS.map((s) => (
+            <TouchableOpacity
+              key={s.id}
+              style={styles.scenarioCard}
+              onPress={() => loadOpening(s.id)}
+              disabled={isLoading}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.scenarioIconCircle, { backgroundColor: s.color }]}>
+                <Text style={styles.scenarioIcon}>{s.icon}</Text>
+              </View>
+              <Text style={styles.scenarioCardText}>{s.label}</Text>
+              {isLoading ? (
+                <ActivityIndicator color="#29B6F6" />
+              ) : (
+                <Text style={styles.scenarioChevron}>›</Text>
+              )}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
     );
   }
@@ -213,30 +233,31 @@ export default function ScenarioScreen({ navigation }: { navigation: any }) {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.topBar, { top: insets.top }]} pointerEvents="box-none">
-        <Text style={styles.topBarText}>{scenarioLabel}</Text>
+      {/* Solid blue chat header */}
+      <View style={[styles.chatHeader, { paddingTop: insets.top + 12 }]}>
+        <TouchableOpacity
+          style={styles.chatBackButton}
+          onPress={() => {
+            setScenario(null);
+            setMessages([]);
+          }}
+          hitSlop={12}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.chatBackIcon}>←</Text>
+        </TouchableOpacity>
+        <Text style={styles.chatHeaderTitle}>{scenarioLabel}</Text>
+        <View style={styles.chatHeaderSpacer} />
       </View>
-
-      <TouchableOpacity
-        style={[styles.backButton, { top: insets.top }]}
-        onPress={() => {
-          setScenario(null);
-          setMessages([]);
-        }}
-        hitSlop={12}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.backButtonText}>← Back</Text>
-      </TouchableOpacity>
 
       <ScrollView
         ref={scrollRef}
         style={styles.messagesScroll}
-        contentContainerStyle={[styles.messagesContent, { paddingTop: 100, paddingBottom: 140 }]}
+        contentContainerStyle={[styles.messagesContent, { paddingBottom: 140 }]}
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
       >
         <View style={styles.logoSection}>
-          <WaveLogo fill="#00877B" animated={false} size={140} />
+          <WaveLogo fill="#29B6F6" animated={false} size={140} />
         </View>
         {messages.map((msg, i) => (
           <View
@@ -244,7 +265,7 @@ export default function ScenarioScreen({ navigation }: { navigation: any }) {
             style={[styles.messageBubble, msg.role === 'user' ? styles.userBubble : styles.aiBubble]}
           >
             <View style={styles.messageRow}>
-              <Text style={styles.messageText}>{msg.content}</Text>
+              <Text style={[styles.messageText, msg.role === 'user' && styles.messageTextUser]}>{msg.content}</Text>
               {msg.role === 'assistant' && (
                 <TouchableOpacity
                   style={styles.speakMsgButton}
@@ -261,43 +282,44 @@ export default function ScenarioScreen({ navigation }: { navigation: any }) {
         ))}
         {isLoading && (
           <View style={[styles.messageBubble, styles.aiBubble]}>
-            <ActivityIndicator size="small" color="#00877B" />
+            <ActivityIndicator size="small" color="#29B6F6" />
           </View>
         )}
       </ScrollView>
 
       <View style={[styles.bottomSection, { paddingBottom: insets.bottom + 24 }]}>
-      <View style={styles.inputRow}>
-        <TextInput
-          style={styles.input}
-          placeholder="Type your response..."
-          value={inputText}
-          onChangeText={setInputText}
-          onSubmitEditing={handleSendText}
-          editable={!isLoading}
-          returnKeyType="send"
-        />
-        {isRecording ? (
-          <TouchableOpacity style={styles.recordButton} onPress={stopRecordingAndSend}>
-            <Text style={styles.recordButtonText}>⏹</Text>
-          </TouchableOpacity>
-        ) : (
+        <View style={styles.inputRow}>
+          <TextInput
+            style={styles.input}
+            placeholder="Type your response..."
+            placeholderTextColor="#A8A29E"
+            value={inputText}
+            onChangeText={setInputText}
+            onSubmitEditing={handleSendText}
+            editable={!isLoading}
+            returnKeyType="send"
+          />
+          {isRecording ? (
+            <TouchableOpacity style={styles.recordButton} onPress={stopRecordingAndSend}>
+              <Text style={styles.recordButtonText}>⏹</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.micButton}
+              onPress={startRecording}
+              disabled={isLoading}
+            >
+              <Text style={styles.micButtonText}>🎤</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
-            style={styles.micButton}
-            onPress={startRecording}
-            disabled={isLoading}
+            style={[styles.sendButton, (!inputText.trim() || isLoading) && styles.sendButtonDisabled]}
+            onPress={handleSendText}
+            disabled={!inputText.trim() || isLoading}
           >
-            <Text style={styles.micButtonText}>🎤</Text>
+            <Text style={styles.sendButtonText}>Send</Text>
           </TouchableOpacity>
-        )}
-        <TouchableOpacity
-          style={[styles.sendButton, (!inputText.trim() || isLoading) && styles.sendButtonDisabled]}
-          onPress={handleSendText}
-          disabled={!inputText.trim() || isLoading}
-        >
-          <Text style={styles.sendButtonText}>Send</Text>
-        </TouchableOpacity>
-      </View>
+        </View>
       </View>
     </View>
   );
@@ -306,64 +328,139 @@ export default function ScenarioScreen({ navigation }: { navigation: any }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#F0F4F8',
   },
-  backButton: {
-    position: 'absolute',
-    left: 20,
-    zIndex: 10,
+  // ── Scenario selection ──────────────────────────────────────────────────────
+  selectionHeader: {
+    backgroundColor: '#29B6F6',
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    shadowColor: '#29B6F6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 6,
   },
-  backButtonText: {
-    fontSize: 16,
-    color: '#00877B',
-    fontWeight: '600',
-  },
-  topBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
+  selectionHeaderTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 36,
-    zIndex: 1,
+    gap: 12,
   },
-  topBarText: {
-    fontSize: 15,
-    color: '#0f172a',
+  headerBackButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerBackIcon: {
+    fontSize: 18,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  selectionHeaderTitles: {
+    flex: 1,
+  },
+  selectionTitle: {
+    fontFamily: 'Georgia',
+    fontSize: 26,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+  },
+  selectionSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.85)',
+    marginTop: 2,
+  },
+  selectionScroll: {
+    flex: 1,
+  },
+  selectionContent: {
+    padding: 20,
+    paddingBottom: 40,
+  },
+  scenarioCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+    gap: 14,
+  },
+  scenarioIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scenarioIcon: {
+    fontSize: 20,
+  },
+  scenarioCardText: {
+    flex: 1,
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#1C1917',
+  },
+  scenarioChevron: {
+    fontSize: 22,
+    color: '#A8A29E',
     fontWeight: '600',
+  },
+  // ── Chat view ───────────────────────────────────────────────────────────────
+  chatHeader: {
+    backgroundColor: '#29B6F6',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#29B6F6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  chatBackButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  chatBackIcon: {
+    fontSize: 18,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  chatHeaderTitle: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  chatHeaderSpacer: {
+    width: 36,
   },
   logoSection: {
     alignItems: 'center',
     marginBottom: 24,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#0f172a',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#64748b',
-    marginBottom: 32,
-  },
-  scenarioOption: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 12,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  scenarioOptionText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#0f172a',
+    marginTop: 20,
   },
   messagesScroll: {
     flex: 1,
@@ -373,21 +470,21 @@ const styles = StyleSheet.create({
   },
   messageBubble: {
     maxWidth: '85%',
-    padding: 14,
-    borderRadius: 16,
+    padding: 16,
+    borderRadius: 18,
     marginBottom: 12,
   },
   userBubble: {
     alignSelf: 'flex-end',
-    backgroundColor: '#00877B',
+    backgroundColor: '#29B6F6',
   },
   aiBubble: {
     alignSelf: 'flex-start',
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
     elevation: 2,
   },
   messageRow: {
@@ -398,7 +495,10 @@ const styles = StyleSheet.create({
   messageText: {
     flex: 1,
     fontSize: 16,
-    color: '#0f172a',
+    color: '#1C1917',
+  },
+  messageTextUser: {
+    color: '#FFFFFF',
   },
   speakMsgButton: {
     padding: 4,
@@ -413,9 +513,9 @@ const styles = StyleSheet.create({
     right: 0,
     paddingHorizontal: 24,
     paddingTop: 16,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
+    borderTopColor: 'rgba(28, 25, 23, 0.08)',
     zIndex: 1,
   },
   inputRow: {
@@ -425,33 +525,38 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
     padding: 14,
     fontSize: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderWidth: 2,
+    borderColor: 'rgba(41,182,246,0.15)',
   },
   sendButton: {
-    backgroundColor: '#00877B',
+    backgroundColor: '#29B6F6',
     paddingHorizontal: 20,
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: 16,
     justifyContent: 'center',
+    shadowColor: '#29B6F6',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
   },
   sendButtonDisabled: {
-    backgroundColor: '#94a3b8',
+    backgroundColor: '#A8A29E',
   },
   sendButtonText: {
     color: '#fff',
-    fontWeight: '600',
+    fontWeight: '700',
     fontSize: 16,
   },
   micButton: {
-    backgroundColor: '#e2e8f0',
+    backgroundColor: 'rgba(41, 182, 246, 0.12)',
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -462,7 +567,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ef4444',
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  Animated,
   Alert,
 } from "react-native";
 import {
@@ -21,8 +22,66 @@ import { getPhrases, Phrase } from "../api/phrases";
 import { useApp } from "../context/AppContext";
 import { useStreak } from "../context/StreakContext";
 import { useUsage } from "../context/UsageContext";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+const PRIMARY = "#29B6F6";
 const SCORE_THRESHOLD = 70;
+
+function PhraseLoader() {
+  const pulse = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1.15, duration: 600, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 600, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
+  return (
+    <View style={loaderStyles.container}>
+      <Animated.View style={[loaderStyles.iconRing, { transform: [{ scale: pulse }] }]}>
+        <Text style={loaderStyles.iconEmoji}>🎤</Text>
+      </Animated.View>
+      <Text style={loaderStyles.title}>Loading phrases</Text>
+      <Text style={loaderStyles.subtitle}>Getting your practice session ready…</Text>
+    </View>
+  );
+}
+
+const loaderStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 14,
+    paddingHorizontal: 40,
+  },
+  iconRing: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "rgba(41, 182, 246, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  iconEmoji: {
+    fontSize: 32,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  subtitle: {
+    fontSize: 14,
+    color: "#9CA3AF",
+    textAlign: "center",
+  },
+});
 
 const TTS_LANG: Record<string, string> = {
   es: "es",
@@ -48,6 +107,7 @@ export default function PhrasePracticeScreen({
   const { language } = useApp();
   const { recordPhrasePractice } = useStreak();
   const { recordUsage } = useUsage();
+  const insets = useSafeAreaInsets();
   const scenario = route.params?.scenario;
   const [phrases, setPhrases] = useState<Phrase[]>([]);
   const [currentIndex, setCurrentIndex] = useState(
@@ -189,10 +249,14 @@ export default function PhrasePracticeScreen({
   if (!phrase && phrases.length === 0) {
     return (
       <View style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#00877B" />
-          <Text style={styles.loadingText}>Loading phrases...</Text>
+        <View style={[styles.blueHeader, { paddingTop: insets.top + 12 }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Text style={styles.headerBackText}>←</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Phrase Practice</Text>
+          <View style={styles.headerSpacer} />
         </View>
+        <PhraseLoader />
       </View>
     );
   }
@@ -200,6 +264,13 @@ export default function PhrasePracticeScreen({
   if (!phrase) {
     return (
       <View style={styles.container}>
+        <View style={[styles.blueHeader, { paddingTop: insets.top + 12 }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Text style={styles.headerBackText}>←</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Phrase Practice</Text>
+          <View style={styles.headerSpacer} />
+        </View>
         <Text style={styles.errorText}>No phrases available</Text>
         <TouchableOpacity
           style={styles.backButton}
@@ -213,12 +284,13 @@ export default function PhrasePracticeScreen({
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => navigation.goBack()}
-      >
-        <Text style={styles.backButtonText}>← Back</Text>
-      </TouchableOpacity>
+      <View style={[styles.blueHeader, { paddingTop: insets.top + 12 }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Text style={styles.headerBackText}>←</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Phrase Practice</Text>
+        <View style={styles.headerSpacer} />
+      </View>
 
       <View style={styles.phraseCard}>
         <Text style={styles.phraseText}>{phrase.phrase}</Text>
@@ -289,52 +361,75 @@ export default function PhrasePracticeScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 24,
+    paddingTop: 0,
+    backgroundColor: "#F0F4F8",
   },
-  loadingContainer: {
+  blueHeader: {
+    backgroundColor: '#29B6F6',
+    paddingBottom: 16,
+    paddingHorizontal: 20,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    marginBottom: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerBackText: {
+    fontSize: 22,
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  headerTitle: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+    textAlign: 'center',
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: "#64748b",
+  headerSpacer: {
+    width: 22,
   },
   errorText: {
     fontSize: 18,
-    color: "#64748b",
+    color: "#57534E",
     marginBottom: 24,
+    marginHorizontal: 20,
   },
   backButton: {
     alignSelf: "flex-start",
     marginBottom: 24,
+    marginHorizontal: 20,
   },
   backButtonText: {
     fontSize: 16,
-    color: "#00877B",
+    color: "#29B6F6",
     fontWeight: "600",
   },
   phraseCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
     padding: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    marginHorizontal: 20,
+    borderWidth: 2,
+    borderColor: "rgba(41,182,246,0.08)",
+    shadowColor: "#1C1917",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
   },
   phraseText: {
+    fontFamily: "Georgia",
     fontSize: 28,
     fontWeight: "700",
-    color: "#0f172a",
+    color: "#1C1917",
     marginBottom: 8,
     textAlign: "center",
+    letterSpacing: -0.5,
   },
   translationText: {
     fontSize: 16,
-    color: "#64748b",
+    color: "#57534E",
     marginBottom: 24,
     textAlign: "center",
   },
@@ -344,34 +439,39 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   listenButton: {
-    backgroundColor: "#e2e8f0",
+    backgroundColor: "rgba(41, 182, 246, 0.1)",
     paddingHorizontal: 20,
     paddingVertical: 12,
-    borderRadius: 10,
+    borderRadius: 14,
   },
   listenButtonText: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#475569",
+    color: "#29B6F6",
   },
   listenButtonTextDisabled: {
-    color: "#94a3b8",
+    color: "#A8A29E",
   },
   recordSection: {
     alignItems: "center",
   },
   speakButton: {
-    backgroundColor: "#00877B",
+    backgroundColor: "#29B6F6",
     width: 120,
     height: 120,
     borderRadius: 60,
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: "#29B6F6",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 4,
   },
   speakButtonText: {
     color: "#fff",
     fontSize: 18,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   stopButton: {
     backgroundColor: "#ef4444",
@@ -384,50 +484,60 @@ const styles = StyleSheet.create({
   stopButtonText: {
     color: "#fff",
     fontSize: 18,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   feedbackSection: {
     marginTop: 16,
   },
   feedbackLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#64748b",
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#78716C",
     marginTop: 12,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   feedbackValue: {
     fontSize: 16,
-    color: "#0f172a",
+    color: "#1C1917",
     marginTop: 4,
+    fontWeight: "600",
   },
   feedbackComment: {
     fontSize: 14,
-    color: "#475569",
+    color: "#57534E",
     marginTop: 12,
     fontStyle: "italic",
   },
   scoreBadge: {
-    backgroundColor: "#e6f7f6",
-    padding: 12,
-    borderRadius: 10,
+    backgroundColor: "rgba(41, 182, 246, 0.12)",
+    padding: 14,
+    borderRadius: 14,
     marginTop: 16,
     alignItems: "center",
+    borderWidth: 2,
+    borderColor: "rgba(41, 182, 246, 0.2)",
   },
   scoreText: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#006d63",
+    color: "#29B6F6",
   },
   nextButton: {
-    backgroundColor: "#00877B",
-    padding: 16,
-    borderRadius: 12,
+    backgroundColor: "#29B6F6",
+    padding: 18,
+    borderRadius: 16,
     marginTop: 24,
     alignItems: "center",
+    shadowColor: "#29B6F6",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 4,
   },
   nextButtonText: {
     color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 17,
+    fontWeight: "700",
   },
 });

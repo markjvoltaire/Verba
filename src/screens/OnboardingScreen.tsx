@@ -628,12 +628,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
         <View style={styles.progress}>
-          {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
-            <View
-              key={i}
-              style={[styles.progressDot, i <= step && styles.progressDotActive]}
-            />
-          ))}
+          <View style={[styles.progressBar, { width: `${((step + 1) / TOTAL_STEPS) * 100}%` as any }]} />
         </View>
         <Animated.View
           style={{
@@ -663,14 +658,14 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#FFFFFF',
   },
   fadeScreenContainer: {
-    backgroundColor: '#00877B',
+    backgroundColor: '#29B6F6',
   },
   scrollContent: {
-    padding: 24,
-    paddingTop: 60,
+    padding: 20,
+    paddingTop: 52,
     paddingBottom: 24,
   },
   backButton: {
@@ -680,73 +675,77 @@ const styles = StyleSheet.create({
   backButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#00877B',
+    color: '#29B6F6',
   },
   progress: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(28,25,23,0.1)',
     marginBottom: 32,
+    overflow: 'hidden',
   },
-  progressDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#e2e8f0',
-  },
-  progressDotActive: {
-    backgroundColor: '#00877B',
+  progressBar: {
+    height: '100%',
+    backgroundColor: '#29B6F6',
+    borderRadius: 2,
   },
   title: {
-    fontSize: 24,
+    fontFamily: 'Georgia',
+    fontSize: 26,
     fontWeight: '700',
-    color: '#0f172a',
+    color: '#1C1917',
     marginBottom: 24,
     textAlign: 'center',
+    letterSpacing: -0.5,
   },
   planSubtitle: {
     fontSize: 16,
-    color: '#64748b',
+    color: '#57534E',
     textAlign: 'center',
     marginBottom: 24,
     lineHeight: 24,
   },
   planCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
     padding: 20,
     borderWidth: 2,
-    borderColor: '#e2e8f0',
+    borderColor: 'rgba(41, 182, 246, 0.15)',
   },
   planItem: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#0f172a',
+    fontWeight: '700',
+    color: '#1C1917',
     marginBottom: 12,
     lineHeight: 26,
   },
   input: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
     padding: 18,
     fontSize: 18,
-    color: '#0f172a',
+    color: '#1C1917',
     borderWidth: 2,
-    borderColor: '#e2e8f0',
+    borderColor: 'rgba(41, 182, 246, 0.15)',
   },
   option: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
     padding: 18,
     marginBottom: 12,
     borderWidth: 2,
-    borderColor: '#e2e8f0',
+    borderColor: 'rgba(41, 182, 246, 0.0)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
   },
   optionSelected: {
-    borderColor: '#00877B',
-    backgroundColor: '#e6f7f6',
+    borderColor: '#29B6F6',
+    backgroundColor: 'rgba(41, 182, 246, 0.08)',
   },
   optionFlag: {
     fontSize: 24,
@@ -755,27 +754,33 @@ const styles = StyleSheet.create({
   optionText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#0f172a',
+    color: '#1C1917',
   },
   optionTextSelected: {
-    color: '#00877B',
+    color: '#29B6F6',
   },
   footer: {
-    padding: 24,
+    padding: 20,
     paddingBottom: 40,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
+    borderTopColor: 'rgba(0,0,0,0.05)',
   },
   button: {
-    backgroundColor: '#00877B',
-    borderRadius: 14,
+    backgroundColor: '#29B6F6',
+    borderRadius: 16,
     paddingVertical: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#29B6F6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 4,
   },
   buttonDisabled: {
-    backgroundColor: '#94a3b8',
+    backgroundColor: '#A8A29E',
+    shadowOpacity: 0.1,
   },
   buttonText: {
     fontSize: 18,
@@ -784,28 +789,33 @@ const styles = StyleSheet.create({
   },
   creatingPlanOverlay: {
     flex: 1,
-    backgroundColor: '#00877B',
+    backgroundColor: '#29B6F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
   paywallScreen: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#FFFFFF',
   },
   paywallView: {
     flex: 1,
   },
   paywallContinueButton: {
     marginTop: 24,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 32,
     paddingVertical: 16,
-    borderRadius: 14,
+    borderRadius: 16,
+    shadowColor: '#1C1917',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   paywallContinueText: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#00877B',
+    color: '#29B6F6',
   },
   welcomeContainer: {
     flex: 1,
