@@ -8,6 +8,7 @@ import {
   PanResponder,
   Dimensions,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { useAudioPlayer, setAudioModeAsync } from "expo-audio";
 import { Ionicons } from "@expo/vector-icons";
@@ -15,17 +16,20 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getSpeechStreamUrl } from "../api/tts";
 import { useApp } from "../context/AppContext";
 import { useSavedPhrases } from "../context/SavedPhrasesContext";
-import type { SavedPhrase } from "../context/SavedPhrasesContext";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const SWIPE_THRESHOLD = 120;
 const SWIPE_OUT_DURATION = 300;
 const FLIP_DURATION = 350;
 
-const BG = "#0F172A";
-const CARD_BG = "#1E293B";
-const CARD_BORDER = "#334155";
+const BG = "#F0F4F8";
+const CARD_BG = "#FFFFFF";
+const CARD_BORDER = "#E5E7EB";
+const TEXT_PRIMARY = "#1E293B";
+const TEXT_MUTED = "#64748B";
+const TEXT_HINT = "#94A3B8";
 const ACCENT = "#29B6F6";
+const ACCENT_SOFT = "rgba(41, 182, 246, 0.12)";
 const CORRECT_COLOR = "#22C55E";
 const WRONG_COLOR = "#EF4444";
 
@@ -46,8 +50,7 @@ function SwipeCard({
   isPlayLoading,
   onSwipeLeft,
   onSwipeRight,
-  isFavorited,
-  onToggleFavorite,
+  onDelete,
 }: {
   phrase: string;
   translation: string;
@@ -58,8 +61,7 @@ function SwipeCard({
   isPlayLoading: boolean;
   onSwipeLeft: () => void;
   onSwipeRight: () => void;
-  isFavorited: boolean;
-  onToggleFavorite: () => void;
+  onDelete: () => void;
 }) {
   const position = useRef(new Animated.ValueXY()).current;
   const flipAnim = useRef(new Animated.Value(0)).current;
@@ -175,6 +177,7 @@ function SwipeCard({
         <Animated.View
           style={[
             styles.flipFace,
+            styles.flipFaceBack,
             {
               opacity: backOpacity,
               transform: [{ perspective: 1200 }, { rotateY: backRotateY }],
@@ -183,31 +186,27 @@ function SwipeCard({
         >
           <View style={styles.cardInnerTop}>
             <TouchableOpacity
-              style={styles.cardActionBtn}
+              style={[styles.cardActionBtn, styles.cardActionBtnBack]}
               onPress={(e) => { e.stopPropagation(); onPlay(); }}
               disabled={isPlayLoading}
             >
               {isPlayLoading ? (
-                <ActivityIndicator size="small" color="rgba(255,255,255,0.7)" />
+                <ActivityIndicator size="small" color={ACCENT} />
               ) : (
-                <Ionicons name="volume-high" size={22} color="rgba(255,255,255,0.7)" />
+                <Ionicons name="volume-high" size={22} color={ACCENT} />
               )}
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.cardActionBtn}
-              onPress={(e) => { e.stopPropagation(); onToggleFavorite(); }}
+              style={[styles.cardActionBtn, styles.cardActionBtnBack]}
+              onPress={(e) => { e.stopPropagation(); onDelete(); }}
             >
-              <Ionicons
-                name={isFavorited ? "star" : "star-outline"}
-                size={22}
-                color={isFavorited ? "#FBBF24" : "rgba(255,255,255,0.4)"}
-              />
+              <Ionicons name="trash-outline" size={22} color={WRONG_COLOR} />
             </TouchableOpacity>
           </View>
           <View style={styles.cardTextArea}>
-            <Text style={styles.cardText}>{backText}</Text>
+            <Text style={styles.cardTextBack}>{backText}</Text>
           </View>
-          <Text style={styles.flipHint}>tap to flip</Text>
+          <Text style={styles.flipHintBack}>tap to flip</Text>
         </Animated.View>
 
         {/* Front face */}
@@ -228,20 +227,16 @@ function SwipeCard({
               disabled={isPlayLoading}
             >
               {isPlayLoading ? (
-                <ActivityIndicator size="small" color="rgba(255,255,255,0.7)" />
+                <ActivityIndicator size="small" color={ACCENT} />
               ) : (
-                <Ionicons name="volume-high-outline" size={22} color="rgba(255,255,255,0.5)" />
+                <Ionicons name="volume-high-outline" size={22} color={ACCENT} />
               )}
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.cardActionBtn}
-              onPress={(e) => { e.stopPropagation(); onToggleFavorite(); }}
+              onPress={(e) => { e.stopPropagation(); onDelete(); }}
             >
-              <Ionicons
-                name={isFavorited ? "star" : "star-outline"}
-                size={22}
-                color={isFavorited ? "#FBBF24" : "rgba(255,255,255,0.3)"}
-              />
+              <Ionicons name="trash-outline" size={22} color={TEXT_MUTED} />
             </TouchableOpacity>
           </View>
           <View style={styles.cardTextArea}>
@@ -310,6 +305,33 @@ export default function FlashcardsScreen() {
     setCardKey((k) => k + 1);
   }, [currentCard]);
 
+  const confirmDeleteCard = useCallback(() => {
+    if (!currentCard) return;
+    Alert.alert(
+      "Remove card",
+      "Remove this phrase from your flashcards? You can save it again from Vocab.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            const idx = currentIndex;
+            const len = flashcards.length;
+            await removeFromFlashcards(currentCard.id);
+            setFlippedId(null);
+            setCardKey((k) => k + 1);
+            if (len <= 1) {
+              setCurrentIndex(0);
+            } else if (idx >= len - 1) {
+              setCurrentIndex(idx - 1);
+            }
+          },
+        },
+      ]
+    );
+  }, [currentCard, currentIndex, flashcards.length, removeFromFlashcards]);
+
   const handleUndo = useCallback(() => {
     if (currentIndex > 0) {
       setCurrentIndex((i) => i - 1);
@@ -341,7 +363,11 @@ export default function FlashcardsScreen() {
 
   if (allFlashcards.length === 0) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={styles.container}>
+        <View style={[styles.blueHeader, { paddingTop: insets.top + 12 }]}>
+          <Text style={styles.emptyHeaderTitle}>Flashcards</Text>
+          <Text style={styles.emptyHeaderSubtitle}>Review saved phrases</Text>
+        </View>
         <View style={styles.emptyState}>
           <View style={styles.emptyIconWrap}>
             <Text style={styles.emptyIcon}>🃏</Text>
@@ -357,10 +383,13 @@ export default function FlashcardsScreen() {
 
   if (isFinished) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={styles.container}>
+        <View style={[styles.blueHeader, { paddingTop: insets.top + 12 }]}>
+          <Text style={styles.emptyHeaderTitle}>Flashcards</Text>
+        </View>
         <View style={styles.summaryContainer}>
           <Text style={styles.summaryEmoji}>🎉</Text>
-          <Text style={styles.summaryTitle}>Session Complete!</Text>
+          <Text style={styles.summaryTitle}>Session complete</Text>
           <Text style={styles.summarySubtitle}>
             You reviewed {flashcards.length} card{flashcards.length !== 1 ? "s" : ""}
           </Text>
@@ -390,25 +419,26 @@ export default function FlashcardsScreen() {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Top bar */}
-      <View style={styles.topBar}>
-        <TouchableOpacity style={styles.topBarBtn} onPress={handleRestart}>
-          <Ionicons name="close" size={24} color="rgba(255,255,255,0.7)" />
-        </TouchableOpacity>
-        <Text style={styles.topBarCounter}>
-          {currentIndex + 1} / {flashcards.length}
-        </Text>
-        <View style={styles.topBarBtn}>
-          <Ionicons name="settings-outline" size={22} color="rgba(255,255,255,0.7)" />
+    <View style={styles.container}>
+      {/* Blue header (matches Progress / Home accent) */}
+      <View style={[styles.blueHeader, { paddingTop: insets.top + 12 }]}>
+        <View style={styles.topBar}>
+          <TouchableOpacity style={styles.topBarBtn} onPress={handleRestart}>
+            <Ionicons name="close" size={24} color="rgba(255,255,255,0.9)" />
+          </TouchableOpacity>
+          <Text style={styles.topBarCounterOnBlue}>
+            {currentIndex + 1} / {flashcards.length}
+          </Text>
+          <View style={styles.topBarBtn}>
+            <Ionicons name="settings-outline" size={22} color="rgba(255,255,255,0.85)" />
+          </View>
+        </View>
+        <View style={styles.progressTrackOnBlue}>
+          <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
         </View>
       </View>
 
-      {/* Progress bar */}
-      <View style={styles.progressTrack}>
-        <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
-      </View>
-
+      <View style={styles.mainBody}>
       {/* Swipe labels */}
       <View style={styles.swipeLabelsRow}>
         <View style={[styles.swipeLabel, styles.swipeLabelWrong]}>
@@ -437,8 +467,7 @@ export default function FlashcardsScreen() {
             isPlayLoading={playingId === currentCard.id}
             onSwipeLeft={() => advanceCard("wrong")}
             onSwipeRight={() => advanceCard("correct")}
-            isFavorited={true}
-            onToggleFavorite={() => removeFromFlashcards(currentCard.id)}
+            onDelete={confirmDeleteCard}
           />
         )}
       </View>
@@ -454,7 +483,7 @@ export default function FlashcardsScreen() {
           <Ionicons
             name="arrow-undo"
             size={24}
-            color={currentIndex === 0 ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.7)"}
+            color={currentIndex === 0 ? TEXT_HINT : TEXT_MUTED}
           />
         </TouchableOpacity>
 
@@ -463,8 +492,9 @@ export default function FlashcardsScreen() {
           onPress={() => advanceCard("correct")}
           activeOpacity={0.7}
         >
-          <Ionicons name="play" size={24} color="rgba(255,255,255,0.7)" />
+          <Ionicons name="play" size={24} color={ACCENT} />
         </TouchableOpacity>
+      </View>
       </View>
     </View>
   );
@@ -474,6 +504,42 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: BG,
+  },
+
+  emptyHeaderTitle: {
+    fontFamily: "Georgia",
+    fontSize: 28,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    marginBottom: 4,
+    letterSpacing: -0.5,
+  },
+  emptyHeaderSubtitle: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.85)",
+  },
+
+  blueHeader: {
+    backgroundColor: ACCENT,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    shadowColor: ACCENT,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  progressTrackOnBlue: {
+    height: 3,
+    backgroundColor: "rgba(255,255,255,0.25)",
+    borderRadius: 2,
+    overflow: "hidden",
+    marginTop: 4,
+  },
+  mainBody: {
+    flex: 1,
   },
 
   topBar: {
@@ -490,23 +556,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  topBarCounter: {
+  topBarCounterOnBlue: {
     fontSize: 16,
-    fontWeight: "600",
-    color: "rgba(255,255,255,0.8)",
+    fontWeight: "700",
+    color: "#FFFFFF",
     letterSpacing: 0.5,
   },
 
-  progressTrack: {
-    height: 3,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    marginHorizontal: 16,
-    borderRadius: 2,
-    overflow: "hidden",
-  },
   progressFill: {
     height: "100%",
-    backgroundColor: ACCENT,
+    backgroundColor: "#FFFFFF",
     borderRadius: 2,
   },
 
@@ -565,6 +624,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: CARD_BORDER,
     overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
   },
 
   flipFace: {
@@ -575,6 +639,10 @@ const styles = StyleSheet.create({
     bottom: 0,
     padding: 24,
     justifyContent: "space-between",
+    backgroundColor: CARD_BG,
+  },
+  flipFaceBack: {
+    backgroundColor: ACCENT_SOFT,
   },
 
   cardInnerTop: {
@@ -586,9 +654,12 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "#F1F5F9",
     alignItems: "center",
     justifyContent: "center",
+  },
+  cardActionBtnBack: {
+    backgroundColor: "rgba(255,255,255,0.85)",
   },
 
   cardTextArea: {
@@ -600,7 +671,15 @@ const styles = StyleSheet.create({
   cardText: {
     fontSize: 26,
     fontWeight: "600",
-    color: "#FFFFFF",
+    color: TEXT_PRIMARY,
+    textAlign: "center",
+    lineHeight: 36,
+    letterSpacing: -0.3,
+  },
+  cardTextBack: {
+    fontSize: 26,
+    fontWeight: "600",
+    color: ACCENT,
     textAlign: "center",
     lineHeight: 36,
     letterSpacing: -0.3,
@@ -608,7 +687,13 @@ const styles = StyleSheet.create({
 
   flipHint: {
     fontSize: 12,
-    color: "rgba(255,255,255,0.25)",
+    color: TEXT_HINT,
+    textAlign: "center",
+    fontWeight: "500",
+  },
+  flipHintBack: {
+    fontSize: 12,
+    color: TEXT_MUTED,
     textAlign: "center",
     fontWeight: "500",
   },
@@ -624,9 +709,16 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   bottomBtnDisabled: {
     opacity: 0.35,
@@ -653,13 +745,13 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 22,
     fontWeight: "700",
-    color: "#FFFFFF",
+    color: TEXT_PRIMARY,
     marginBottom: 10,
     textAlign: "center",
   },
   emptyText: {
     fontSize: 15,
-    color: "rgba(255,255,255,0.5)",
+    color: TEXT_MUTED,
     textAlign: "center",
     lineHeight: 22,
   },
@@ -669,6 +761,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 40,
+    paddingBottom: 24,
   },
   summaryEmoji: {
     fontSize: 56,
@@ -677,13 +770,13 @@ const styles = StyleSheet.create({
   summaryTitle: {
     fontSize: 28,
     fontWeight: "800",
-    color: "#FFFFFF",
+    color: TEXT_PRIMARY,
     marginBottom: 8,
     letterSpacing: -0.5,
   },
   summarySubtitle: {
     fontSize: 16,
-    color: "rgba(255,255,255,0.5)",
+    color: TEXT_MUTED,
     marginBottom: 32,
   },
   summaryStatsRow: {
@@ -703,7 +796,7 @@ const styles = StyleSheet.create({
   summaryStatLabel: {
     fontSize: 13,
     fontWeight: "600",
-    color: "rgba(255,255,255,0.5)",
+    color: TEXT_MUTED,
   },
   summaryStatValue: {
     fontSize: 32,
