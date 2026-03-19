@@ -249,23 +249,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
 
   const handleNext = async () => {
     if (step === PLAN_DISPLAY_STEP) {
-      if (!learningLanguage || !languageLevel || !nativeLanguage || !ageRange || !learningSpeed) return;
-      const profile: OnboardingProfile = {
-        name: name.trim(),
-        learningLanguage,
-        languageLevel,
-        motivation: motivation.trim(),
-        nativeLanguage,
-        ageRange,
-        learningSpeed,
-      };
-      const rcUserId = revenueCatUserId ?? (await Purchases.getAppUserID().catch(() => null));
-      if (rcUserId) {
-        await syncUserToBackend(rcUserId, profile);
-      }
-      prevStepRef.current = step;
-      setPaywallLoading(true);
-      setStep(PAYWALL_STEP);
+      completeOnboardingAndGoToMain();
     } else if (step < TOTAL_STEPS - 1) {
       prevStepRef.current = step;
       setStep(step + 1);

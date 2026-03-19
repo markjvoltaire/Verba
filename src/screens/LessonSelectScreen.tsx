@@ -117,36 +117,12 @@ export default function LessonSelectScreen({
   const currentLang = LANGUAGES.find((l) => l.code === language);
   const goalProgress = dailyGoal > 0 ? Math.min(todayPhraseCount / dailyGoal, 1) : 0;
 
-  const handleLesson = async (lesson: (typeof lessons)[0]) => {
+  const handleLesson = (lesson: (typeof lessons)[0]) => {
     const params = {
       scenario: lesson.scenario,
       difficulty: DIFFICULTY_MAP[lesson.difficulty],
     };
-    const rcUserId = revenueCatUserId ?? (await Purchases.getAppUserID().catch(() => null));
-    try {
-      if (rcUserId) {
-        const plan = await getPlanFromBackend(rcUserId);
-        if (plan === "pro") {
-          navigation.navigate("PracticeList", params);
-          return;
-        }
-      }
-      const result = await RevenueCatUI.presentPaywallIfNeeded({
-        requiredEntitlementIdentifier: "pro",
-      });
-      if (
-        result === PAYWALL_RESULT.NOT_PRESENTED ||
-        result === PAYWALL_RESULT.PURCHASED ||
-        result === PAYWALL_RESULT.RESTORED
-      ) {
-        if (result === PAYWALL_RESULT.PURCHASED || result === PAYWALL_RESULT.RESTORED) {
-          if (rcUserId) await updatePlanToPro(rcUserId);
-        }
-        navigation.navigate("PracticeList", params);
-      }
-    } catch {
-      navigation.navigate("PracticeList", params);
-    }
+    navigation.navigate("PracticeList", params);
   };
 
   const filteredSections = DIFFICULTY_SECTIONS.filter(
