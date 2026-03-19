@@ -12,8 +12,10 @@ import {
   Dimensions,
   ActivityIndicator,
   Alert,
+  SafeAreaView,
 } from 'react-native';
 import Purchases from 'react-native-purchases';
+import RevenueCatUI from 'react-native-purchases-ui';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SLIDE_DISTANCE = SCREEN_WIDTH * 0.15;
@@ -24,7 +26,7 @@ import { getPhrases } from '../api/phrases';
 import type { Phrase } from '../api/phrases';
 import OnboardingPronunciationStep from '../components/OnboardingPronunciationStep';
 import { getLearningPlan } from '../lib/learningPlan';
-import { syncUserToBackend } from '../api/users';
+import { syncUserToBackend, updatePlanToPro } from '../api/users';
 import { useUserId } from '../context/UserContext';
 
 const LEVEL_TO_DIFFICULTY: Record<LanguageLevel, string> = {
@@ -77,13 +79,15 @@ const LANGUAGE_LABELS: Record<Language, string> = {
   en: 'English',
 };
 
-const TOTAL_STEPS = 12;
+const TOTAL_STEPS = 14;
 const WELCOME_STEP = 1;
 const LANGUAGE_FADE_STEP = 3;
 const NATIVE_LANGUAGE_STEP = 5;
-const PRONUNCIATION_STEP = 6;
-const PLAN_DISPLAY_STEP = 10;
-const CREATING_PLAN_STEP = 11;
+const PRONUNCIATION_PREP_STEP = 6;
+const PRONUNCIATION_STEP = 7;
+const SPEAKING_INSIGHT_STEP = 8;
+const PLAN_DISPLAY_STEP = 12;
+const PAYWALL_STEP = 13;
 const WELCOME_DURATION_MS = 2700;
 const FADE_SCREEN_DURATION_MS = 3500;
 
@@ -129,6 +133,28 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     new Animated.Value(20),
     new Animated.Value(20),
   ]).current;
+  const paywallLoaderOpacity = useRef(new Animated.Value(1)).current;
+  const paywallPurchasedRef = useRef(false);
+  const [paywallLoading, setPaywallLoading] = useState(false);
+  const prepEmojiScale = useRef(new Animated.Value(0)).current;
+  const prepTitleOpacity = useRef(new Animated.Value(0)).current;
+  const prepTitleTranslateY = useRef(new Animated.Value(20)).current;
+  const prepSubtitleOpacity = useRef(new Animated.Value(0)).current;
+  const prepSubtitleTranslateY = useRef(new Animated.Value(16)).current;
+  const prepBtnOpacity = useRef(new Animated.Value(0)).current;
+  const prepBtnTranslateY = useRef(new Animated.Value(20)).current;
+  const insightIconScale = useRef(new Animated.Value(0)).current;
+  const insightStatOpacities = useRef([
+    new Animated.Value(0),
+    new Animated.Value(0),
+    new Animated.Value(0),
+  ]).current;
+  const insightStatTranslateY = useRef([
+    new Animated.Value(18),
+    new Animated.Value(18),
+    new Animated.Value(18),
+  ]).current;
+  const insightBtnOpacity = useRef(new Animated.Value(0)).current;
 
   const canProceed = () => {
     switch (step) {
@@ -138,10 +164,12 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       case LANGUAGE_FADE_STEP: return true;
       case 4: return languageLevel !== null;
       case NATIVE_LANGUAGE_STEP: return nativeLanguage !== null;
+      case PRONUNCIATION_PREP_STEP: return true;
       case PRONUNCIATION_STEP: return true;
-      case 7: return motivation.trim().length > 0;
-      case 8: return ageRange !== null;
-      case 9: return learningSpeed !== null;
+      case SPEAKING_INSIGHT_STEP: return true;
+      case 9: return motivation.trim().length > 0;
+      case 10: return ageRange !== null;
+      case 11: return learningSpeed !== null;
       case PLAN_DISPLAY_STEP: return true;
       default: return false;
     }
@@ -156,8 +184,11 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       setStep(2);
     } else if (step === PLAN_DISPLAY_STEP) {
       prevStepRef.current = step;
-      setStep(9);
-    } else if (step > 0 && step !== WELCOME_STEP && step !== LANGUAGE_FADE_STEP && step !== CREATING_PLAN_STEP) {
+      setStep(11);
+    } else if (step === PAYWALL_STEP) {
+      prevStepRef.current = step;
+      setStep(PLAN_DISPLAY_STEP);
+    } else if (step > 0 && step !== WELCOME_STEP && step !== LANGUAGE_FADE_STEP && step !== PAYWALL_STEP) {
       prevStepRef.current = step;
       setStep(step - 1);
     } else if (step === WELCOME_STEP || step === LANGUAGE_FADE_STEP) {
@@ -166,6 +197,54 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     } else {
       navigation.goBack();
     }
+  };
+
+  const completeOnboardingAndGoToMain = async () => {
+    if (!learningLanguage || !languageLevel || !nativeLanguage || !ageRange || !learningSpeed) return;
+    const profile: OnboardingProfile = {
+      name: name.trim(),
+      learningLanguage,
+      languageLevel,
+      motivation: motivation.trim(),
+      nativeLanguage,
+      ageRange,
+      learningSpeed,
+    };
+    await setOnboardingProfile(profile);
+    await setLanguage(learningLanguage);
+    await setHasCompletedOnboarding(true);
+    const rcUserId = revenueCatUserId ?? (await Purchases.getAppUserID().catch(() => null));
+    if (rcUserId) {
+      syncUserToBackend(rcUserId, profile);
+    }
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Main' }],
+    });
+  };
+
+  const completeOnboardingAndGoToCongrats = async () => {
+    if (!learningLanguage || !languageLevel || !nativeLanguage || !ageRange || !learningSpeed) return;
+    const profile: OnboardingProfile = {
+      name: name.trim(),
+      learningLanguage,
+      languageLevel,
+      motivation: motivation.trim(),
+      nativeLanguage,
+      ageRange,
+      learningSpeed,
+    };
+    await setOnboardingProfile(profile);
+    await setLanguage(learningLanguage);
+    await setHasCompletedOnboarding(true);
+    const rcUserId = revenueCatUserId ?? (await Purchases.getAppUserID().catch(() => null));
+    if (rcUserId) {
+      syncUserToBackend(rcUserId, profile);
+    }
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Congrats' }],
+    });
   };
 
   const handleNext = async () => {
@@ -180,14 +259,13 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
         ageRange,
         learningSpeed,
       };
-      await setOnboardingProfile(profile);
-      await setLanguage(learningLanguage);
-      await setHasCompletedOnboarding(true);
       const rcUserId = revenueCatUserId ?? (await Purchases.getAppUserID().catch(() => null));
       if (rcUserId) {
-        syncUserToBackend(rcUserId, profile);
+        await syncUserToBackend(rcUserId, profile);
       }
-      navigation.navigate('Congrats');
+      prevStepRef.current = step;
+      setPaywallLoading(true);
+      setStep(PAYWALL_STEP);
     } else if (step < TOTAL_STEPS - 1) {
       prevStepRef.current = step;
       setStep(step + 1);
@@ -195,7 +273,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
   };
 
   useEffect(() => {
-    if (step === CREATING_PLAN_STEP || step === PLAN_DISPLAY_STEP || step === WELCOME_STEP || step === LANGUAGE_FADE_STEP || step < 0 || step >= TOTAL_STEPS) return;
+    if (step === PAYWALL_STEP || step === PLAN_DISPLAY_STEP || step === WELCOME_STEP || step === LANGUAGE_FADE_STEP || step === PRONUNCIATION_PREP_STEP || step === SPEAKING_INSIGHT_STEP || step < 0 || step >= TOTAL_STEPS) return;
     const prevStep = prevStepRef.current;
     const isForward = step > prevStep;
     const isInitial = step === 0 && prevStep === 0;
@@ -276,15 +354,78 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
   }, [step, learningLanguage, languageFadeAnim]);
 
   useEffect(() => {
-    if (step === PRONUNCIATION_STEP && learningLanguage && languageLevel) {
-      const apiDifficulty = LEVEL_TO_DIFFICULTY[languageLevel];
-      getPhrases(learningLanguage, undefined, apiDifficulty, 1)
-        .then((phrases) => setPronunciationPhrase(phrases[0] ?? null))
-        .catch(() => setPronunciationPhrase(null));
-    } else if (step !== PRONUNCIATION_STEP) {
+    if ((step === PRONUNCIATION_PREP_STEP || step === PRONUNCIATION_STEP) && learningLanguage && languageLevel) {
+      if (!pronunciationPhrase) {
+        const apiDifficulty = LEVEL_TO_DIFFICULTY[languageLevel];
+        getPhrases(learningLanguage, undefined, apiDifficulty, 1)
+          .then((phrases) => setPronunciationPhrase(phrases[0] ?? null))
+          .catch(() => setPronunciationPhrase(null));
+      }
+    } else if (step !== PRONUNCIATION_PREP_STEP && step !== PRONUNCIATION_STEP) {
       setPronunciationPhrase(null);
     }
   }, [step, learningLanguage, languageLevel]);
+
+  useEffect(() => {
+    if (step !== PRONUNCIATION_PREP_STEP) return;
+    prepEmojiScale.setValue(0);
+    prepTitleOpacity.setValue(0);
+    prepTitleTranslateY.setValue(20);
+    prepSubtitleOpacity.setValue(0);
+    prepSubtitleTranslateY.setValue(16);
+    prepBtnOpacity.setValue(0);
+    prepBtnTranslateY.setValue(20);
+
+    Animated.sequence([
+      Animated.spring(prepEmojiScale, {
+        toValue: 1,
+        friction: 4,
+        tension: 80,
+        useNativeDriver: true,
+      }),
+      Animated.parallel([
+        Animated.timing(prepTitleOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+        Animated.timing(prepTitleTranslateY, { toValue: 0, duration: 400, useNativeDriver: true }),
+      ]),
+      Animated.parallel([
+        Animated.timing(prepSubtitleOpacity, { toValue: 1, duration: 350, useNativeDriver: true }),
+        Animated.timing(prepSubtitleTranslateY, { toValue: 0, duration: 350, useNativeDriver: true }),
+      ]),
+      Animated.parallel([
+        Animated.timing(prepBtnOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.timing(prepBtnTranslateY, { toValue: 0, duration: 300, useNativeDriver: true }),
+      ]),
+    ]).start();
+  }, [step]);
+
+  useEffect(() => {
+    if (step !== SPEAKING_INSIGHT_STEP) return;
+    insightIconScale.setValue(0);
+    insightStatOpacities.forEach((a) => a.setValue(0));
+    insightStatTranslateY.forEach((a) => a.setValue(18));
+    insightBtnOpacity.setValue(0);
+
+    const statAnimations = insightStatOpacities.map((opacity, i) =>
+      Animated.sequence([
+        Animated.delay(i * 200),
+        Animated.parallel([
+          Animated.timing(opacity, { toValue: 1, duration: 350, useNativeDriver: true }),
+          Animated.timing(insightStatTranslateY[i], { toValue: 0, duration: 350, useNativeDriver: true }),
+        ]),
+      ])
+    );
+
+    Animated.sequence([
+      Animated.spring(insightIconScale, {
+        toValue: 1,
+        friction: 5,
+        tension: 70,
+        useNativeDriver: true,
+      }),
+      Animated.parallel(statAnimations),
+      Animated.timing(insightBtnOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+    ]).start();
+  }, [step]);
 
   useEffect(() => {
     if (step !== PLAN_DISPLAY_STEP) return;
@@ -345,6 +486,43 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       ]),
     ]).start();
   }, [step, planTitleOpacity, planTitleTranslateY, planSubtitleOpacity, planCardOpacity, planCardTranslateY, planItemOpacities, planItemTranslateX]);
+
+  useEffect(() => {
+    if (step === PAYWALL_STEP) {
+      paywallPurchasedRef.current = false;
+      paywallLoaderOpacity.setValue(1);
+      const minLoaderMs = 1200;
+      const start = Date.now();
+      Purchases.getOfferings()
+        .then((offerings) => {
+          if (offerings.current?.availablePackages) {
+            const products = offerings.current.availablePackages.map((p) => ({
+              identifier: p.identifier,
+              packageType: p.packageType,
+              price: p.product.priceString,
+              title: p.product.title,
+            }));
+            console.log('[Paywall] Products:', products);
+          }
+        })
+        .catch((e) => console.warn('[Paywall] Failed to fetch offerings:', e))
+        .finally(() => {
+          const elapsed = Date.now() - start;
+          const remaining = Math.max(0, minLoaderMs - elapsed);
+          setTimeout(() => {
+            setPaywallLoading(false);
+            Animated.timing(paywallLoaderOpacity, {
+              toValue: 0,
+              duration: 350,
+              useNativeDriver: true,
+            }).start();
+          }, remaining);
+        });
+    } else {
+      setPaywallLoading(false);
+    }
+  }, [step, paywallLoaderOpacity]);
+
 
   const renderStep = () => {
     switch (step) {
@@ -440,7 +618,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
             ))}
           </>
         );
-      case 7:
+      case 9:
         return (
           <>
             <Text style={styles.title}>
@@ -458,7 +636,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
             ))}
           </>
         );
-      case 8:
+      case 10:
         return (
           <>
             <Text style={styles.title}>What is your age?</Text>
@@ -474,7 +652,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
             ))}
           </>
         );
-      case 9:
+      case 11:
         return (
           <>
             <Text style={styles.title}>
@@ -550,8 +728,6 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
           </>
         );
       }
-      case CREATING_PLAN_STEP:
-        return null;
       default:
         return null;
     }
@@ -595,6 +771,59 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     );
   }
 
+  if (step === PRONUNCIATION_PREP_STEP) {
+    const langName = learningLanguage ? LANGUAGE_LABELS[learningLanguage] : 'your new language';
+    return (
+      <View style={styles.prepScreen}>
+        <SafeAreaView style={styles.prepSafeArea}>
+          <TouchableOpacity
+            style={styles.prepBackBtn}
+            onPress={handleBack}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.prepBackBtnText}>← Back</Text>
+          </TouchableOpacity>
+          <View style={styles.prepContent}>
+            <Animated.Text style={[styles.prepEmoji, { transform: [{ scale: prepEmojiScale }] }]}>
+              🎙️
+            </Animated.Text>
+            <Animated.Text
+              style={[
+                styles.prepTitle,
+                { opacity: prepTitleOpacity, transform: [{ translateY: prepTitleTranslateY }] },
+              ]}
+            >
+              Let's hear you speak {langName}
+            </Animated.Text>
+            <Animated.Text
+              style={[
+                styles.prepSubtitle,
+                { opacity: prepSubtitleOpacity, transform: [{ translateY: prepSubtitleTranslateY }] },
+              ]}
+            >
+              You'll see a phrase, listen to how it sounds, then hold the mic to say it yourself. Verba will give you instant feedback.
+            </Animated.Text>
+            <Animated.View
+              style={[
+                styles.prepBtnWrap,
+                { opacity: prepBtnOpacity, transform: [{ translateY: prepBtnTranslateY }] },
+              ]}
+            >
+              <TouchableOpacity
+                style={styles.prepBtn}
+                activeOpacity={0.85}
+                onPress={handleNext}
+              >
+                <Text style={styles.prepBtnText}>I'm ready</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </View>
+        </SafeAreaView>
+      </View>
+    );
+  }
+
   if (step === PRONUNCIATION_STEP) {
     return (
       <OnboardingPronunciationStep
@@ -605,6 +834,104 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
         onSkip={handleNext}
         onContinue={handleNext}
       />
+    );
+  }
+
+  if (step === SPEAKING_INSIGHT_STEP) {
+    const langName = learningLanguage ? LANGUAGE_LABELS[learningLanguage] : 'a new language';
+    const INSIGHT_STATS = [
+      { number: '2×', text: `Speaking practice doubles retention compared to passive study` },
+      { number: '68%', text: `of learners say speaking is the hardest skill — Verba makes it easy` },
+      { number: '10 min', text: `a day of speaking builds real fluency faster than hours of reading` },
+    ];
+    return (
+      <View style={styles.insightScreen}>
+        <SafeAreaView style={styles.prepSafeArea}>
+          <TouchableOpacity
+            style={styles.prepBackBtn}
+            onPress={handleBack}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.prepBackBtnText}>← Back</Text>
+          </TouchableOpacity>
+          <View style={styles.insightContent}>
+            <Animated.Text style={[styles.insightIcon, { transform: [{ scale: insightIconScale }] }]}>
+              🧠
+            </Animated.Text>
+            <Text style={styles.insightTitle}>
+              Speaking is the fastest path to fluency
+            </Text>
+            <View style={styles.insightStatsWrap}>
+              {INSIGHT_STATS.map((stat, i) => (
+                <Animated.View
+                  key={i}
+                  style={[
+                    styles.insightStatRow,
+                    {
+                      opacity: insightStatOpacities[i],
+                      transform: [{ translateY: insightStatTranslateY[i] }],
+                    },
+                  ]}
+                >
+                  <Text style={styles.insightStatNumber}>{stat.number}</Text>
+                  <Text style={styles.insightStatText}>{stat.text}</Text>
+                </Animated.View>
+              ))}
+            </View>
+            <Animated.View style={{ opacity: insightBtnOpacity }}>
+              <TouchableOpacity
+                style={styles.prepBtn}
+                activeOpacity={0.85}
+                onPress={handleNext}
+              >
+                <Text style={styles.prepBtnText}>Continue</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </View>
+        </SafeAreaView>
+      </View>
+    );
+  }
+
+  if (step === PAYWALL_STEP) {
+    return (
+      <View style={styles.paywallScreen}>
+        <RevenueCatUI.Paywall
+          options={{ displayCloseButton: true }}
+          onDismiss={() => {
+            // Delay to let onPurchaseCompleted/onRestoreCompleted fire first
+            // (native bridge can dispatch dismiss before purchase callback)
+            setTimeout(() => {
+              if (paywallPurchasedRef.current) return;
+              completeOnboardingAndGoToMain();
+            }, 300);
+          }}
+          onPurchaseCompleted={async () => {
+            paywallPurchasedRef.current = true;
+            const rcUserId = revenueCatUserId ?? (await Purchases.getAppUserID().catch(() => null));
+            if (rcUserId) await updatePlanToPro(rcUserId);
+            completeOnboardingAndGoToCongrats();
+          }}
+          onRestoreCompleted={async () => {
+            paywallPurchasedRef.current = true;
+            const rcUserId = revenueCatUserId ?? (await Purchases.getAppUserID().catch(() => null));
+            if (rcUserId) await updatePlanToPro(rcUserId);
+            completeOnboardingAndGoToCongrats();
+          }}
+        />
+        <Animated.View
+          pointerEvents={paywallLoading ? 'auto' : 'none'}
+          style={[
+            StyleSheet.absoluteFill,
+            styles.paywallLoader,
+            { opacity: paywallLoaderOpacity },
+          ]}
+        >
+          <ActivityIndicator size="large" color="#29B6F6" />
+          <Text style={styles.paywallLoaderText}>Loading...</Text>
+        </Animated.View>
+      </View>
     );
   }
 
@@ -797,6 +1124,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
+  paywallLoader: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paywallLoaderText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#57534E',
+  },
   paywallView: {
     flex: 1,
   },
@@ -855,5 +1193,122 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#F8F9FA',
     fontFamily: 'Georgia',
+  },
+  prepScreen: {
+    flex: 1,
+    backgroundColor: '#1D4ED8',
+  },
+  prepSafeArea: {
+    flex: 1,
+  },
+  prepBackBtn: {
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 4,
+    alignSelf: 'flex-start',
+  },
+  prepBackBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.7)',
+  },
+  prepContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 36,
+  },
+  prepEmoji: {
+    fontSize: 72,
+    marginBottom: 32,
+  },
+  prepTitle: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    fontFamily: 'Georgia',
+    lineHeight: 40,
+    marginBottom: 16,
+  },
+  prepSubtitle: {
+    fontSize: 17,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.82)',
+    textAlign: 'center',
+    lineHeight: 26,
+    marginBottom: 48,
+  },
+  prepBtnWrap: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  prepBtn: {
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 18,
+    paddingHorizontal: 56,
+    borderRadius: 32,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  prepBtnText: {
+    fontSize: 19,
+    fontWeight: '700',
+    color: '#1D4ED8',
+    letterSpacing: 0.3,
+  },
+  insightScreen: {
+    flex: 1,
+    backgroundColor: '#0F172A',
+  },
+  insightContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  insightIcon: {
+    fontSize: 64,
+    marginBottom: 24,
+  },
+  insightTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    fontFamily: 'Georgia',
+    lineHeight: 36,
+    marginBottom: 36,
+  },
+  insightStatsWrap: {
+    width: '100%',
+    marginBottom: 44,
+    gap: 20,
+  },
+  insightStatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    gap: 16,
+  },
+  insightStatNumber: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#60A5FA',
+    minWidth: 70,
+    textAlign: 'center',
+  },
+  insightStatText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.82)',
+    lineHeight: 22,
+    flex: 1,
   },
 });

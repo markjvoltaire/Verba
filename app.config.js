@@ -15,6 +15,7 @@ module.exports = {
       revenueCatApiKeyTest: process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_TEST || '',
       supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || '',
       supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
+      devRevenueCatUserId: process.env.EXPO_PUBLIC_DEV_REVENUE_CAT_USER_ID || '',
     },
   },
 };

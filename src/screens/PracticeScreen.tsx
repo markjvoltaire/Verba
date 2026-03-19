@@ -4,7 +4,6 @@ import {
   View,
   TouchableOpacity,
   Pressable,
-  ActivityIndicator,
   Alert,
   ScrollView,
   Animated,
@@ -31,6 +30,7 @@ import { evaluateSpeech } from "../api/speech";
 import { getFeedbackPhrases } from "../constants/feedbackPhrases";
 import { useApp } from "../context/AppContext";
 import { useSavedPhrases } from "../context/SavedPhrasesContext";
+import { useLessonProgress } from "../context/LessonProgressContext";
 import { useStreak } from "../context/StreakContext";
 import { useUsage } from "../context/UsageContext";
 
@@ -63,6 +63,8 @@ const TTS_LANG: Record<string, string> = {
 };
 
 const SCORE_THRESHOLD = 70;
+const INTRO_SPEAKING_BLUE = "#1D4ED8";
+const CORRECT_BG_GREEN = "#16A34A";
 
 function LoaderDot({ delay }: { delay: number }) {
   const anim = useRef(new Animated.Value(0)).current;
@@ -70,8 +72,16 @@ function LoaderDot({ delay }: { delay: number }) {
     const loop = Animated.loop(
       Animated.sequence([
         Animated.delay(delay),
-        Animated.timing(anim, { toValue: -7, duration: 280, useNativeDriver: true }),
-        Animated.timing(anim, { toValue: 0, duration: 280, useNativeDriver: true }),
+        Animated.timing(anim, {
+          toValue: -7,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+        Animated.timing(anim, {
+          toValue: 0,
+          duration: 280,
+          useNativeDriver: true,
+        }),
         Animated.delay(Math.max(0, 560 - delay)),
       ]),
     );
@@ -88,8 +98,8 @@ const loaderDotStyle = {
   width: 8,
   height: 8,
   borderRadius: 4,
-  backgroundColor: "#29B6F6",
-  opacity: 0.7,
+  backgroundColor: "#FFFFFF",
+  opacity: 0.9,
 };
 
 type Phase =
@@ -102,7 +112,11 @@ type Phase =
   | "incorrect"
   | "complete";
 
-function handleBack(navigation: { goBack: () => void; canGoBack?: () => boolean; navigate: (screen: string) => void }) {
+function handleBack(navigation: {
+  goBack: () => void;
+  canGoBack?: () => boolean;
+  navigate: (screen: string) => void;
+}) {
   if (navigation.canGoBack?.()) {
     navigation.goBack();
   } else {
@@ -122,7 +136,11 @@ export default function PracticeScreen({
   navigation,
   route,
 }: {
-  navigation: { goBack: () => void; canGoBack?: () => boolean; navigate: (screen: string) => void };
+  navigation: {
+    goBack: () => void;
+    canGoBack?: () => boolean;
+    navigate: (screen: string) => void;
+  };
   route: { params?: { scenario?: string; difficulty?: string } };
 }) {
   const insets = useSafeAreaInsets();
@@ -135,6 +153,8 @@ export default function PracticeScreen({
   } = useSavedPhrases();
   const { recordUsage } = useUsage();
   const { recordPhrasePractice } = useStreak();
+  const { completedByScenario, recordPhraseCompleted } = useLessonProgress();
+  const completedByScenarioRef = useRef(completedByScenario);
   const scenario = route.params?.scenario ?? "";
   const difficulty = route.params?.difficulty ?? "medium";
   const lessonLabel = LESSON_LABELS[scenario] ?? scenario;
@@ -160,6 +180,8 @@ export default function PracticeScreen({
   const [ttsPlaying, setTtsPlaying] = useState(false);
   const [replayLoading, setReplayLoading] = useState(false);
   const [currentWordIndex, setCurrentWordIndex] = useState(-1);
+  const [introWordIndex, setIntroWordIndex] = useState(-1);
+  const introStartRef = useRef<number | null>(null);
   const [goodJobUri, setGoodJobUri] = useState<string | null>(null);
   const [tryAgainUri, setTryAgainUri] = useState<string | null>(null);
   const [lessonLoaderUri, setLessonLoaderUri] = useState<string | null>(null);
@@ -167,6 +189,11 @@ export default function PracticeScreen({
   const promptOpacity = useRef(new Animated.Value(0)).current;
   const promptTranslateY = useRef(new Animated.Value(16)).current;
   const orbitRotation = useRef(new Animated.Value(0)).current;
+  const speakingBgOpacity = useRef(new Animated.Value(0)).current;
+  const correctBgOpacity = useRef(new Animated.Value(0)).current;
+  const evaluatingSpin = useRef(new Animated.Value(0)).current;
+  const idleHoldPulse = useRef(new Animated.Value(1)).current;
+  const idleHoldPulseAnimRef = useRef<Animated.CompositeAnimation | null>(null);
 
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const player = useAudioPlayer(ttsUri ? { uri: ttsUri } : null);
@@ -203,8 +230,7 @@ export default function PracticeScreen({
   }, []);
 
   const showLoader =
-    phase === "loading" ||
-    (phase === "intro" && !ttsPlaying && intro != null);
+    phase === "loading" || (phase === "intro" && !ttsPlaying && intro != null);
 
   useEffect(() => {
     if (!lessonLoaderUri || !lessonLoaderPlayer) return;
@@ -265,6 +291,37 @@ export default function PracticeScreen({
     }
   }, [phase, phraseIndex, promptOpacity, promptTranslateY]);
 
+  // When the user starts speaking, show the phrase card immediately.
+  // (The prompt animation only runs for `phase === "prompt"`, so `phase === "listening"`
+  // could otherwise render with `opacity=0`.)
+  useEffect(() => {
+    if (phase === "listening") {
+      promptOpacity.setValue(1);
+      promptTranslateY.setValue(0);
+    }
+  }, [phase, promptOpacity, promptTranslateY]);
+
+  useEffect(() => {
+    const isBlueBackground =
+      phase === "prompt" ||
+      phase === "listening" ||
+      phase === "evaluating" ||
+      (phase === "intro" && ttsPlaying && intro != null);
+    Animated.timing(speakingBgOpacity, {
+      toValue: isBlueBackground ? 1 : 0,
+      duration: 280,
+      useNativeDriver: true,
+    }).start();
+  }, [phase, ttsPlaying, intro, speakingBgOpacity]);
+
+  useEffect(() => {
+    Animated.timing(correctBgOpacity, {
+      toValue: phase === "correct" ? 1 : 0,
+      duration: 280,
+      useNativeDriver: true,
+    }).start();
+  }, [phase, correctBgOpacity]);
+
   useEffect(() => {
     if (phase === "listening") {
       orbitRotation.setValue(0);
@@ -279,6 +336,64 @@ export default function PracticeScreen({
       return () => loop.stop();
     }
   }, [phase, orbitRotation]);
+
+  useEffect(() => {
+    if (phase !== "evaluating") {
+      evaluatingSpin.stopAnimation();
+      evaluatingSpin.setValue(0);
+      return;
+    }
+
+    evaluatingSpin.setValue(0);
+    const loop = Animated.loop(
+      Animated.timing(evaluatingSpin, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      }),
+    );
+
+    loop.start();
+    return () => loop.stop();
+  }, [phase, evaluatingSpin]);
+
+  useEffect(() => {
+    const shouldPulse =
+      phase === "prompt" && !ttsPlaying && !replayLoading && Boolean(phrase);
+
+    if (!shouldPulse) {
+      idleHoldPulseAnimRef.current?.stop();
+      idleHoldPulseAnimRef.current = null;
+      idleHoldPulse.setValue(phase === "listening" ? 1.1 : 1);
+      return;
+    }
+
+    idleHoldPulse.setValue(1);
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(idleHoldPulse, {
+          toValue: 1.01,
+          duration: 950,
+          useNativeDriver: true,
+        }),
+        Animated.timing(idleHoldPulse, {
+          toValue: 0.995,
+          duration: 950,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    idleHoldPulseAnimRef.current = loop;
+    loop.start();
+
+    return () => {
+      loop.stop();
+      if (idleHoldPulseAnimRef.current === loop) {
+        idleHoldPulseAnimRef.current = null;
+      }
+    };
+  }, [phase, ttsPlaying, replayLoading, idleHoldPulse, phrase]);
 
   const playTts = useCallback(async (text: string, lang: string) => {
     if (!text.trim()) return;
@@ -314,6 +429,10 @@ export default function PracticeScreen({
   }, [playTts]);
 
   useEffect(() => {
+    completedByScenarioRef.current = completedByScenario;
+  }, [completedByScenario]);
+
+  useEffect(() => {
     if (scenario) {
       hasStartedIntroRef.current = false;
       Promise.all([
@@ -321,7 +440,12 @@ export default function PracticeScreen({
         getLessonIntro(scenario, nativeLang, targetLang),
       ])
         .then(([phrasesData, introData]) => {
-          setPhrases(phrasesData);
+          const completed = completedByScenarioRef.current[scenario] || {};
+          const reordered = [
+            ...phrasesData.filter((p) => !completed[p.id]),
+            ...phrasesData.filter((p) => completed[p.id]),
+          ];
+          setPhrases(reordered);
           setIntro(introData);
           setPhase("intro");
         })
@@ -597,11 +721,7 @@ export default function PracticeScreen({
     } else {
       setPhase("complete");
     }
-  }, [
-    phraseIndex,
-    phrases.length,
-    playPromptForPhrase,
-  ]);
+  }, [phraseIndex, phrases.length, playPromptForPhrase]);
 
   const handleFlashcardsToggle = useCallback(async () => {
     if (!phrase) return;
@@ -635,6 +755,8 @@ export default function PracticeScreen({
       !isPlayingRef.current
     ) {
       hasStartedIntroRef.current = true;
+      introStartRef.current = Date.now();
+      setIntroWordIndex(-1);
       const combinedIntro = [intro.greeting, intro.explanation]
         .filter(Boolean)
         .join(" ");
@@ -655,10 +777,38 @@ export default function PracticeScreen({
     playPromptForPhrase,
   ]);
 
+  // Track which intro word is currently being spoken
+  useEffect(() => {
+    if (phase !== "intro" || !ttsPlaying || !intro) {
+      setIntroWordIndex(-1);
+      introStartRef.current = null;
+      return;
+    }
+    const fullText = [intro.greeting, intro.explanation]
+      .filter(Boolean)
+      .join(" ");
+    const words = fullText.split(/\s+/).filter(Boolean);
+    if (words.length === 0) return;
+
+    const msPerChar = 95;
+    const totalMs = fullText.length * msPerChar;
+    const wordMs = totalMs / words.length;
+
+    const interval = setInterval(() => {
+      const start = introStartRef.current;
+      if (!start) return;
+      const elapsed = Date.now() - start;
+      const idx = Math.min(Math.floor(elapsed / wordMs), words.length - 1);
+      setIntroWordIndex(Math.max(0, idx));
+    }, 60);
+
+    return () => clearInterval(interval);
+  }, [phase, ttsPlaying, intro]);
+
   const handlePressIn = async () => {
     if (phase !== "prompt" || !phrase || ttsPlaying) return;
     setPhase("listening");
-    setButtonScale(1.1);
+    idleHoldPulse.setValue(1.1); // Make the hold button subtly “pop” while pressing.
     setFeedback(null);
     try {
       await setAudioModeAsync({
@@ -678,7 +828,7 @@ export default function PracticeScreen({
 
   const handlePressOut = async () => {
     if (phase !== "listening" || !audioRecorder.isRecording) return;
-    setButtonScale(1);
+    idleHoldPulse.setValue(1); // Reset when user releases.
     setPhase("evaluating");
     try {
       await audioRecorder.stop();
@@ -698,6 +848,9 @@ export default function PracticeScreen({
       setFeedback(result);
       if (result.score >= SCORE_THRESHOLD) {
         await recordPhrasePractice();
+        if (scenario && phrase?.id) {
+          await recordPhraseCompleted(scenario, phrase.id);
+        }
         setPhase("correct");
         if (goodJobUri) {
           playGoodJobSound();
@@ -726,7 +879,9 @@ export default function PracticeScreen({
 
   if (showLoader) {
     return (
-      <View style={styles.container}>
+      <View
+        style={[styles.container, { backgroundColor: INTRO_SPEAKING_BLUE }]}
+      >
         <TouchableOpacity
           style={[
             styles.backButton,
@@ -736,14 +891,16 @@ export default function PracticeScreen({
           onPress={() => handleBack(navigation)}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Text style={styles.backText}>← Back</Text>
+          <Text style={[styles.backText, { color: "#FFFFFF" }]}>← Back</Text>
         </TouchableOpacity>
 
         <View style={styles.loadingContainer}>
           <View style={styles.loaderCard}>
-            <WaveLogo fill="#29B6F6" animated />
+            <WaveLogo fill="#FFFFFF" animated />
 
-            <Text style={styles.loaderLesson}>{lessonLabel}</Text>
+            <Text style={[styles.loaderLesson, { color: "#FFFFFF" }]}>
+              {lessonLabel}
+            </Text>
 
             <View
               style={[
@@ -780,234 +937,373 @@ export default function PracticeScreen({
     );
   }
 
+  const isBlueBackground =
+    phase === "prompt" ||
+    phase === "listening" ||
+    phase === "evaluating" ||
+    (phase === "intro" && ttsPlaying && intro != null);
+  const isCorrectBackground = phase === "correct";
+
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        (isBlueBackground || isCorrectBackground) && {
+          // Prevent a white/gray flash before the animated overlay opacity updates.
+          backgroundColor: INTRO_SPEAKING_BLUE,
+        },
+      ]}
+    >
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFillObject,
+          { backgroundColor: INTRO_SPEAKING_BLUE, opacity: speakingBgOpacity },
+        ]}
+      />
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFillObject,
+          { backgroundColor: CORRECT_BG_GREEN, opacity: correctBgOpacity },
+        ]}
+      />
       {/* ── TOP BAR ── */}
-      <View style={[styles.topBar, { paddingTop: insets.top }]}>
+      <View
+        style={[
+          styles.topBar,
+          { paddingTop: insets.top },
+          (isBlueBackground || isCorrectBackground) && {
+            backgroundColor: "transparent",
+          },
+        ]}
+      >
         <TouchableOpacity
           onPress={() => handleBack(navigation)}
           hitSlop={12}
           activeOpacity={0.7}
           style={styles.backBtn}
         >
-          <Ionicons name="chevron-back" size={20} color="#374151" />
+          <Ionicons
+            name="chevron-back"
+            size={20}
+            color={
+              isBlueBackground || isCorrectBackground ? "#FFFFFF" : "#374151"
+            }
+          />
         </TouchableOpacity>
         <View style={styles.topBarCenter}>
-          <Text style={styles.topBarText}>{lessonLabel}</Text>
+          <Text
+            style={[
+              styles.topBarText,
+              isBlueBackground || isCorrectBackground
+                ? { color: "#FFFFFF" }
+                : null,
+            ]}
+          >
+            {lessonLabel}
+          </Text>
           {phrases.length > 0 && phase !== "complete" && (
-            <Text style={styles.topBarSub}>
-              {phraseIndex + 1} / {phrases.length}
+            <Text
+              style={[
+                styles.topBarSub,
+                isBlueBackground || isCorrectBackground
+                  ? { color: "#BFDBFE" }
+                  : null,
+              ]}
+            >
+              {Math.min(phraseIndex + 1, phrases.length)} / {phrases.length}
             </Text>
           )}
         </View>
         <View style={styles.backBtn} />
       </View>
 
-      <ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 160 }]}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* WaveLogo — only show when audio playing */}
-        {(ttsPlaying || replayLoading) && (
-          <View style={styles.logoSection}>
-            <WaveLogo fill="#29B6F6" animated />
-          </View>
-        )}
-
-        {/* ── PHRASE CARD ── */}
-        {(phase === "prompt" || phase === "listening") && phrase && (
-          <Animated.View
-            style={[
-              styles.phraseCard,
-              { opacity: promptOpacity, transform: [{ translateY: promptTranslateY }] },
-            ]}
+      <View style={styles.mainContent}>
+        {phase === "intro" && ttsPlaying && intro ? (
+          <ScrollView
+            style={styles.introSpeakingContainer}
+            contentContainerStyle={styles.introSpeakingContent}
+            showsVerticalScrollIndicator={false}
           >
-            {/* Card header: label + listen icon */}
-            <View style={styles.phraseCardHeader}>
-              <Text style={styles.phraseLabel}>
-                {phase === "listening" ? "Listening…" : "Say this"}
-              </Text>
-              <TouchableOpacity
-                style={[
-                  styles.listenIconBtn,
-                  (ttsPlaying || phase === "listening") && styles.listenIconBtnDisabled,
-                ]}
-                onPress={handleReplay}
-                disabled={ttsPlaying || phase === "listening"}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name={replayLoading && !ttsPlaying ? "hourglass-outline" : "volume-high"}
-                  size={18}
-                  color={ttsPlaying || phase === "listening" ? "#D1D5DB" : "#29B6F6"}
-                />
-              </TouchableOpacity>
+            <View style={styles.speakingWaveWrapper}>
+              <WaveLogo fill="#FFFFFF" animated={ttsPlaying} />
             </View>
+          </ScrollView>
+        ) : (
+          <View style={[styles.scrollContent, { paddingBottom: 24 }]}>
+            {/* During "prompt" we already have the phrase card on screen, so
+            we don't need a separate speaking indicator pills. */}
 
-            {/* The phrase (target language) */}
-            <Text style={styles.phraseText}>
-              {(phrase.phrase.split(/\s+/).filter(Boolean) as string[]).map(
-                (word, i, words) => (
-                  <Text
-                    key={i}
-                    style={
-                      ttsPlaying && i === currentWordIndex
-                        ? [styles.phraseText, styles.phraseWordHighlight]
-                        : styles.phraseText
-                    }
-                  >
-                    {word}
-                    {i < words.length - 1 ? " " : ""}
-                  </Text>
-                ),
-              )}
-            </Text>
-
-            {/* Divider + translation */}
-            {phrase.translation && (
-              <>
-                <View style={styles.phraseDivider} />
-                <Text style={styles.translationLabel}>Translation</Text>
-                <Text style={styles.phraseTranslation}>
-                  {phrase.translation}
-                </Text>
-              </>
-            )}
-          </Animated.View>
-        )}
-
-        {/* ── EVALUATING ── */}
-        {phase === "evaluating" && (
-          <View style={styles.evaluatingSection}>
-            <View style={styles.evaluatingIcon}>
-              <ActivityIndicator size="large" color="#29B6F6" />
-            </View>
-            <Text style={styles.evaluatingTitle}>Checking…</Text>
-            <Text style={styles.evaluatingSub}>Scoring your pronunciation</Text>
-          </View>
-        )}
-
-        {/* ── FEEDBACK ── */}
-        {(phase === "correct" || phase === "incorrect") && feedback && (
-          <View style={styles.feedbackCard}>
-            {/* Score badge */}
-            <View
-              style={[
-                styles.scoreBadge,
-                feedback.score >= SCORE_THRESHOLD
-                  ? styles.scoreBadgeGood
-                  : styles.scoreBadgePoor,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.scoreNum,
-                  feedback.score >= SCORE_THRESHOLD
-                    ? styles.scoreNumGood
-                    : styles.scoreNumPoor,
-                ]}
-              >
-                {feedback.score}
-              </Text>
-              <Text
-                style={[
-                  styles.scoreLabel,
-                  feedback.score >= SCORE_THRESHOLD
-                    ? styles.scoreNumGood
-                    : styles.scoreNumPoor,
-                ]}
-              >
-                / 100
-              </Text>
-            </View>
-
-            <Text
-              style={[
-                styles.feedbackHeadline,
-                feedback.score >= SCORE_THRESHOLD
-                  ? styles.feedbackHeadlineGood
-                  : styles.feedbackHeadlinePoor,
-              ]}
-            >
-              {feedback.score >= SCORE_THRESHOLD
-                ? feedbackPhrases.correct
-                : feedback.feedback}
-            </Text>
-
-            {feedback.transcription ? (
-              <Text style={styles.feedbackHeard}>
-                Heard: "{feedback.transcription}"
-              </Text>
-            ) : null}
-          </View>
-        )}
-
-        {/* ── COMPLETE ── */}
-        {phase === "complete" && (
-          <View style={styles.completeSection}>
-            <Text style={styles.completeEmoji}>🎉</Text>
-            <Text style={styles.completeTitle}>Lesson complete!</Text>
-            <Text style={styles.completeSubtitle}>
-              You practiced {phrases.length} phrase
-              {phrases.length !== 1 ? "s" : ""}.
-            </Text>
-          </View>
-        )}
-      </ScrollView>
-
-      {(phase === "prompt" || phase === "listening") && (
-        <Animated.View
-          style={[
-            styles.bottomSection,
-            { paddingBottom: insets.bottom + 32 },
-            {
-              opacity: promptOpacity,
-              transform: [{ translateY: promptTranslateY }],
-            },
-          ]}
-        >
-          <View style={styles.holdButtonContainer}>
-            {phase === "listening" && (
+            {/* ── PHRASE CARD ── */}
+            {(phase === "prompt" || phase === "listening") && phrase && (
               <Animated.View
                 style={[
-                  styles.orbitRing,
+                  styles.phraseCard,
                   {
-                    transform: [
-                      {
-                        rotate: orbitRotation.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: ["0deg", "360deg"],
-                        }),
-                      },
-                    ],
+                    opacity: promptOpacity,
+                    transform: [{ translateY: promptTranslateY }],
                   },
                 ]}
-              />
+              >
+                {/* Card header: label + listen icon */}
+                <View style={styles.phraseCardHeader}>
+                  {!ttsPlaying || phase === "listening" ? (
+                    <Text style={styles.phraseLabel}>
+                      {phase === "listening" ? "Listening…" : "Say this"}
+                    </Text>
+                  ) : null}
+                  <TouchableOpacity
+                    style={[
+                      styles.listenIconBtn,
+                      (ttsPlaying || phase === "listening") &&
+                        styles.listenIconBtnDisabled,
+                    ]}
+                    onPress={handleReplay}
+                    disabled={ttsPlaying || phase === "listening"}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={
+                        replayLoading && !ttsPlaying
+                          ? "hourglass-outline"
+                          : "volume-high"
+                      }
+                      size={18}
+                      color={
+                        ttsPlaying || phase === "listening"
+                          ? "#D1D5DB"
+                          : "#29B6F6"
+                      }
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                {/* The phrase (target language) */}
+                <Text style={styles.phraseText}>
+                  {(phrase.phrase.split(/\s+/).filter(Boolean) as string[]).map(
+                    (word, i, words) => (
+                      <Text
+                        key={i}
+                        style={
+                          ttsPlaying && i === currentWordIndex
+                            ? [styles.phraseText, styles.phraseWordHighlight]
+                            : styles.phraseText
+                        }
+                      >
+                        {word}
+                        {i < words.length - 1 ? " " : ""}
+                      </Text>
+                    ),
+                  )}
+                </Text>
+
+                {/* Divider + translation */}
+                {phrase.translation && (
+                  <>
+                    <View style={styles.phraseDivider} />
+                    <Text style={styles.translationLabel}>Translation</Text>
+                    <Text style={styles.phraseTranslation}>
+                      {phrase.translation}
+                    </Text>
+                  </>
+                )}
+              </Animated.View>
             )}
-            <Pressable
-              onPressIn={handlePressIn}
-              onPressOut={handlePressOut}
-              disabled={ttsPlaying || replayLoading}
-              style={[
-                styles.holdButtonWrapper,
-                {
-                  transform: [{ scale: buttonScale }],
-                  opacity: ttsPlaying || replayLoading ? 0.5 : 1,
-                },
-              ]}
-            >
-              <View style={styles.holdButton} />
-            </Pressable>
+
+            {/* ── EVALUATING ── */}
+            {phase === "evaluating" && (
+              <View style={styles.evaluatingSection}>
+                <View style={styles.evaluatingIcon}>
+                  <Animated.View
+                    style={[
+                      styles.evaluatingSpinner,
+                      {
+                        transform: [
+                          {
+                            rotate: evaluatingSpin.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: ["0deg", "360deg"],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  />
+
+                  <View style={styles.evaluatingDotsRow}>
+                    <Animated.View
+                      style={[
+                        styles.evaluatingDot,
+                        {
+                          opacity: evaluatingSpin.interpolate({
+                            inputRange: [0, 0.33, 0.66, 1],
+                            outputRange: [0.25, 1, 0.25, 0.25],
+                          }),
+                        },
+                      ]}
+                    />
+                    <Animated.View
+                      style={[
+                        styles.evaluatingDot,
+                        {
+                          opacity: evaluatingSpin.interpolate({
+                            inputRange: [0, 0.33, 0.66, 1],
+                            outputRange: [0.25, 0.25, 1, 0.25],
+                          }),
+                        },
+                      ]}
+                    />
+                    <Animated.View
+                      style={[
+                        styles.evaluatingDot,
+                        {
+                          opacity: evaluatingSpin.interpolate({
+                            inputRange: [0, 0.33, 0.66, 1],
+                            outputRange: [0.25, 0.25, 0.25, 1],
+                          }),
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+                <Text style={styles.evaluatingTitle}>Checking…</Text>
+                <Text style={styles.evaluatingSub}>
+                  Scoring your pronunciation
+                </Text>
+              </View>
+            )}
+
+            {/* ── FEEDBACK ── */}
+            {(phase === "correct" || phase === "incorrect") && feedback && (
+              <View style={styles.feedbackCard}>
+                {/* Score badge */}
+                <View
+                  style={[
+                    styles.scoreBadge,
+                    feedback.score >= SCORE_THRESHOLD
+                      ? styles.scoreBadgeGood
+                      : styles.scoreBadgePoor,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.scoreNum,
+                      feedback.score >= SCORE_THRESHOLD
+                        ? styles.scoreNumGood
+                        : styles.scoreNumPoor,
+                    ]}
+                  >
+                    {feedback.score}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.scoreLabel,
+                      feedback.score >= SCORE_THRESHOLD
+                        ? styles.scoreNumGood
+                        : styles.scoreNumPoor,
+                    ]}
+                  >
+                    / 100
+                  </Text>
+                </View>
+
+                <Text
+                  style={[
+                    styles.feedbackHeadline,
+                    feedback.score >= SCORE_THRESHOLD
+                      ? styles.feedbackHeadlineGood
+                      : styles.feedbackHeadlinePoor,
+                  ]}
+                >
+                  {feedback.score >= SCORE_THRESHOLD
+                    ? feedbackPhrases.correct
+                    : feedback.feedback}
+                </Text>
+
+                {feedback.transcription ? (
+                  <Text style={styles.feedbackHeard}>
+                    Heard: "{feedback.transcription}"
+                  </Text>
+                ) : null}
+              </View>
+            )}
+
+            {/* ── COMPLETE ── */}
+            {phase === "complete" && (
+              <View style={styles.completeSection}>
+                <Text style={styles.completeEmoji}>🎉</Text>
+                <Text style={styles.completeTitle}>Lesson complete!</Text>
+                <Text style={styles.completeSubtitle}>
+                  You practiced {phrases.length} phrase
+                  {phrases.length !== 1 ? "s" : ""}.
+                </Text>
+              </View>
+            )}
           </View>
-          <Text style={styles.holdButtonHint}>
-            {phase === "listening"
-              ? "Release when done"
-              : ttsPlaying
-                ? "Listen..."
-                : "Hold to speak"}
-          </Text>
-        </Animated.View>
-      )}
+        )}
+
+        {(phase === "prompt" || phase === "listening") && (
+          <Animated.View
+            style={[
+              styles.holdButtonFooter,
+              { paddingBottom: insets.bottom + 24 },
+              {
+                opacity: promptOpacity,
+                transform: [{ translateY: 0 }],
+              },
+            ]}
+          >
+            <View style={styles.holdButtonContainer}>
+              {phase === "listening" || (phase === "prompt" && !ttsPlaying) ? (
+                <>
+                  {phase === "listening" && (
+                    <Animated.View
+                      style={[
+                        styles.orbitRing,
+                        {
+                          transform: [
+                            {
+                              rotate: orbitRotation.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: ["0deg", "360deg"],
+                              }),
+                            },
+                          ],
+                        },
+                      ]}
+                    />
+                  )}
+                  <Animated.View
+                    style={[
+                      styles.holdButtonWrapper,
+                      {
+                        transform: [{ scale: idleHoldPulse }],
+                        opacity: ttsPlaying || replayLoading ? 0.5 : 1,
+                      },
+                    ]}
+                  >
+                    <Pressable
+                      onPressIn={handlePressIn}
+                      onPressOut={handlePressOut}
+                      disabled={ttsPlaying || replayLoading}
+                    >
+                      <View style={styles.holdButton} />
+                    </Pressable>
+                  </Animated.View>
+                </>
+              ) : null}
+            </View>
+            <Text style={styles.holdButtonHint}>
+              {phase === "listening"
+                ? "Release when done"
+                : ttsPlaying
+                  ? "Listen..."
+                  : "Hold to speak"}
+            </Text>
+          </Animated.View>
+        )}
+      </View>
 
       {phase === "correct" && phrase && (
         <View
@@ -1128,22 +1424,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   loaderCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "transparent",
     borderRadius: 24,
     padding: 32,
     alignItems: "center",
     width: "100%",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4,
+    shadowColor: "transparent",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
     gap: 12,
   },
   loaderLesson: {
     fontSize: 22,
     fontWeight: "700",
-    color: "#111827",
+    color: "#FFFFFF",
     textAlign: "center",
     letterSpacing: -0.3,
     marginTop: 4,
@@ -1152,22 +1448,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 20,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "rgba(255, 255, 255, 0.14)",
   },
-  loaderBadgeEasy: { backgroundColor: "#DCFCE7" },
-  loaderBadgeMedium: { backgroundColor: "#FEF3C7" },
-  loaderBadgeHard: { backgroundColor: "#FEE2E2" },
+  loaderBadgeEasy: { backgroundColor: "rgba(22, 163, 74, 0.18)" },
+  loaderBadgeMedium: { backgroundColor: "rgba(217, 119, 6, 0.18)" },
+  loaderBadgeHard: { backgroundColor: "rgba(220, 38, 38, 0.18)" },
   loaderBadgeText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#6B7280",
+    color: "rgba(255, 255, 255, 0.92)",
   },
-  loaderBadgeTextEasy: { color: "#16A34A" },
-  loaderBadgeTextMedium: { color: "#D97706" },
-  loaderBadgeTextHard: { color: "#DC2626" },
+  loaderBadgeTextEasy: { color: "#86EFAC" },
+  loaderBadgeTextMedium: { color: "#FDBA74" },
+  loaderBadgeTextHard: { color: "#FCA5A5" },
   loaderStatus: {
     fontSize: 14,
-    color: "#9CA3AF",
+    color: "#BFDBFE",
     marginTop: 4,
   },
   loaderDots: {
@@ -1223,6 +1519,61 @@ const styles = StyleSheet.create({
   // ── SCROLL ───────────────────────────────────────────────────────────────────
   logoSection: {
     marginBottom: 20,
+  },
+
+  speakingWaveWrapper: {
+    alignItems: "center",
+    marginBottom: 0,
+  },
+  speakingIndicator: {
+    alignItems: "center",
+    marginBottom: 20,
+    gap: 12,
+  },
+  speakingIndicatorLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#29B6F6",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  introSpeakingContainer: {
+    flex: 1,
+    paddingHorizontal: 24,
+  },
+  introSpeakingContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingTop: 0,
+    paddingBottom: 0,
+  },
+  introSpeakingHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 20,
+  },
+  introSpeakingLabel: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#29B6F6",
+    letterSpacing: 0.3,
+  },
+  introWordsWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  introWord: {
+    fontFamily: "Georgia",
+    fontSize: 26,
+    lineHeight: 40,
+    fontWeight: "400",
+    color: "#D1D5DB",
+  },
+  introWordActive: {
+    color: "#1E293B",
+    fontWeight: "600",
   },
 
   // ── PHRASE CARD ───────────────────────────────────────────────────────────────
@@ -1309,11 +1660,37 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(41, 182, 246, 0.1)",
     alignItems: "center",
     justifyContent: "center",
+    position: "relative",
+  },
+  evaluatingSpinner: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 4,
+    borderColor: "rgba(41, 182, 246, 0.18)",
+    borderTopColor: "#29B6F6",
+    borderRightColor: "rgba(41, 182, 246, 0.55)",
+    backgroundColor: "transparent",
+  },
+  evaluatingDotsRow: {
+    position: "absolute",
+    bottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+  },
+  evaluatingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#29B6F6",
+    marginHorizontal: 4,
   },
   evaluatingTitle: {
     fontSize: 20,
     fontWeight: "700",
-    color: "#111827",
+    color: "white",
   },
   evaluatingSub: {
     fontSize: 14,
@@ -1387,6 +1764,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#6B7280",
   },
+  mainContent: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  holdButtonFooter: {
+    alignItems: "center",
+    paddingTop: 16,
+    backgroundColor: "transparent",
+  },
   bottomSection: {
     position: "absolute",
     bottom: 0,
@@ -1418,12 +1806,12 @@ const styles = StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: 44,
-    backgroundColor: "#29B6F6",
+    backgroundColor: "#FFFFFF",
   },
   holdButtonHint: {
     marginTop: 12,
     fontSize: 14,
-    color: "#57534E",
+    color: "white",
     fontWeight: "500",
   },
   correctActions: {
@@ -1431,49 +1819,56 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
+    gap: 14,
   },
   tryAgainButton: {
     paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 24,
-    borderWidth: 2,
-    borderColor: "#29B6F6",
+    paddingHorizontal: 22,
+    borderRadius: 28,
+    backgroundColor: "rgba(255, 255, 255, 0.92)",
+    borderWidth: 1.5,
+    borderColor: "rgba(41, 182, 246, 0.5)",
   },
   tryAgainButtonText: {
     fontSize: 16,
-    color: "#29B6F6",
+    color: "#0284C7",
     fontWeight: "600",
   },
   flashcardsButton: {
     paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 24,
-    borderWidth: 2,
-    borderColor: "#29B6F6",
+    paddingHorizontal: 22,
+    borderRadius: 28,
+    backgroundColor: "rgba(255, 255, 255, 0.92)",
+    borderWidth: 1.5,
+    borderColor: "rgba(41, 182, 246, 0.5)",
   },
   flashcardsButtonActive: {
-    backgroundColor: "#29B6F6",
-    borderColor: "#29B6F6",
+    backgroundColor: "#0EA5E9",
+    borderColor: "#0EA5E9",
   },
   flashcardsButtonText: {
     fontSize: 16,
-    color: "#29B6F6",
+    color: "#0284C7",
     fontWeight: "600",
   },
   flashcardsButtonTextActive: {
     color: "#fff",
   },
   continueButton: {
-    paddingVertical: 14,
-    paddingHorizontal: 28,
-    backgroundColor: "#29B6F6",
-    borderRadius: 24,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 28,
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 3,
   },
   continueButtonText: {
-    fontSize: 16,
-    color: "#fff",
-    fontWeight: "600",
+    fontSize: 17,
+    color: "#0284C7",
+    fontWeight: "700",
   },
   doneButton: {
     paddingVertical: 14,

@@ -1,6 +1,25 @@
 import { apiClient } from './client';
 import type { OnboardingProfile } from '../context/AppContext';
 
+export async function checkUserExistsInBackend(
+  revenueCatUserId: string
+): Promise<boolean> {
+  try {
+    const res = await apiClient.get<{ exists: boolean }>(
+      `/users/exists?revenue_cat_user_id=${encodeURIComponent(revenueCatUserId)}`
+    );
+    if (__DEV__) {
+      console.log('[Auth] checkUserExists response:', res);
+    }
+    return res.exists === true;
+  } catch (err) {
+    if (__DEV__) {
+      console.warn('[Auth] checkUserExists failed:', err);
+    }
+    return false;
+  }
+}
+
 export async function syncUserToBackend(
   revenueCatUserId: string,
   profile: OnboardingProfile

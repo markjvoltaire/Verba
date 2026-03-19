@@ -4,7 +4,6 @@ import {
   BottomTabBarProps,
 } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import {
   Text,
   View,
@@ -14,10 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import WaveLogo from '../components/WaveLogo';
 import ProgressScreen from '../screens/ProgressScreen';
-import PracticeScreen from '../screens/PracticeScreen';
-import PhrasePracticeScreen from '../screens/PhrasePracticeScreen';
 import GlossaryScreen from '../screens/GlossaryScreen';
 import FlashcardsScreen from '../screens/FlashcardsScreen';
 import ScenarioScreen from '../screens/ScenarioScreen';
@@ -36,15 +32,6 @@ const ACTIVE_PILL_BG = 'rgba(41, 182, 246, 0.12)';
 
 function CustomTabBar(props: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const activeRoute = props.state.routes[props.state.index];
-  const focusedRouteName =
-    getFocusedRouteNameFromRoute(activeRoute) ?? 'LessonSelect';
-  const isOnPracticeScreen =
-    activeRoute.name === 'Speak' && focusedRouteName === 'PracticeList';
-
-  if (isOnPracticeScreen) {
-    return null;
-  }
 
   return (
     <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
@@ -121,8 +108,6 @@ function SpeakStackScreen() {
     >
       <SpeakStack.Screen name="ModeSelect" component={SpeakModeSelectScreen} />
       <SpeakStack.Screen name="LessonSelect" component={LessonSelectScreen} />
-      <SpeakStack.Screen name="PracticeList" component={PracticeScreen} />
-      <SpeakStack.Screen name="PhrasePractice" component={PhrasePracticeScreen} />
     </SpeakStack.Navigator>
   );
 }

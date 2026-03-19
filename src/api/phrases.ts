@@ -9,6 +9,23 @@ export interface Phrase {
   difficulty?: string;
 }
 
+export interface Lesson {
+  id: string;
+  scenario: string;
+  label: string;
+  description: string;
+  icon: string;
+  difficulty: string;
+  phraseCount: number;
+}
+
+export async function getLessons(lang?: string): Promise<Lesson[]> {
+  const params = new URLSearchParams();
+  if (lang) params.set('lang', lang);
+  const query = params.toString();
+  return apiClient.get<Lesson[]>(`/phrases/scenarios${query ? `?${query}` : ''}`);
+}
+
 export async function getPhrases(
   lang?: string,
   scenario?: string,

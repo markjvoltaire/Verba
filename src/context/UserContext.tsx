@@ -9,10 +9,15 @@ interface UserContextType {
 
 const UserContext = createContext<UserContextType | null>(null);
 
-const REVENUECAT_API_KEY =
-  Constants.expoConfig?.extra?.revenueCatApiKeyTest ||
-  process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_TEST ||
-  '';
+const IS_DEV = __DEV__;
+
+const REVENUECAT_API_KEY = IS_DEV
+  ? (Constants.expoConfig?.extra?.revenueCatApiKeyTest ||
+     process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_TEST ||
+     '')
+  : (Constants.expoConfig?.extra?.revenueCatApiKey ||
+     process.env.REVENUECAT_API_KEY ||
+     '');
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
@@ -22,7 +27,11 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     const init = async () => {
       try {
         const isExpoGo = Constants.appOwnership === 'expo';
-        if (!REVENUECAT_API_KEY || isExpoGo) {
+        if (isExpoGo) {
+          setUserId(null);
+          return;
+        }
+        if (!REVENUECAT_API_KEY) {
           setUserId(null);
           return;
         }
@@ -30,8 +39,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         Purchases.configure({ apiKey: REVENUECAT_API_KEY });
         const id = await Purchases.getAppUserID();
         setUserId(id);
-        console.log(id);
-      } catch {
+      } catch (e) {
         setUserId(null);
       } finally {
         setIsLoading(false);

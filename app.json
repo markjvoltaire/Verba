@@ -2,7 +2,7 @@
   "expo": {
     "name": "Verba",
     "slug": "Verba",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -14,9 +14,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.markjvoltaire.Verba",
-      "buildNumber": "7",
+      "buildNumber": "8",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSMicrophoneUsageDescription": "Verba uses the microphone while you practice speaking in language lessons. For example, when you press and hold the speak button, we record your voice so the app can analyze your pronunciation against the phrase you are learning and show you feedback and a score."
       }
     },
     "android": {
@@ -45,8 +46,21 @@
     "extra": {
       "eas": {
         "projectId": "978c3fe6-4f0d-4123-9abb-bf789c7aedd7"
-      }
+      },
+      "revenueCatApiKey": "appl_YKzoFnDCcpRBDenRvaQMuhYTZyy",
+      "revenueCatApiKeyTest": "test_BrbhWWDglHrwjmKLuyqIDpjygeJ"
     },
-    "plugins": ["expo-audio", "expo-apple-authentication"]
+    "plugins": [
+      "expo-audio",
+      "expo-apple-authentication",
+      [
+        "react-native-purchases",
+        {
+          "ios": {
+            "usesStoreKit2JamSandbox": true
+          }
+        }
+      ]
+    ]
   }
 }
