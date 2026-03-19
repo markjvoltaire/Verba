@@ -1,15 +1,21 @@
 import React, { useMemo, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Pressable, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Pressable, Alert, ActivityIndicator, Linking, Platform } from 'react-native';
 import { Calendar } from 'react-native-calendars';
 import { useFocusEffect } from '@react-navigation/native';
 import Purchases from 'react-native-purchases';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useApp, type Language } from '../context/AppContext';
+import { useApp, type Language, type LanguageLevel } from '../context/AppContext';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { useStreak } from '../context/StreakContext';
 import { useUsage } from '../context/UsageContext';
 import { useUserId } from '../context/UserContext';
 import { getProgressFromBackend, type ProgressData } from '../api/progress';
+
+const DIFFICULTY_LEVELS: { key: LanguageLevel; label: string; icon: string }[] = [
+  { key: 'beginner', label: 'Beginner', icon: '🌱' },
+  { key: 'intermediate', label: 'Intermediate', icon: '🔥' },
+  { key: 'advanced', label: 'Advanced', icon: '💎' },
+];
 
 const NATIVE_LANGUAGES: { code: Language; label: string; flag: string }[] = [
   { code: 'es', label: 'Spanish', flag: '🇪🇸' },
@@ -20,13 +26,14 @@ const NATIVE_LANGUAGES: { code: Language; label: string; flag: string }[] = [
 
 export default function ProgressScreen() {
   const insets = useSafeAreaInsets();
-  const { language, onboardingProfile, setNativeLanguage } = useApp();
+  const { language, onboardingProfile, setNativeLanguage, setLanguageLevel } = useApp();
   const { streak, todayPhraseCount, dailyGoal, practiceDates, clearStats: clearStreakStats } = useStreak();
   const { todayUsageSeconds, clearStats: clearUsageStats } = useUsage();
   const { userId: revenueCatUserId } = useUserId();
   const [backendProgress, setBackendProgress] = useState<ProgressData | null>(null);
   const [isLoadingProgress, setIsLoadingProgress] = useState(true);
   const [nativeLangModalVisible, setNativeLangModalVisible] = useState(false);
+  const [difficultyModalVisible, setDifficultyModalVisible] = useState(false);
 
   const rcUserId = revenueCatUserId ?? null;
 
@@ -61,9 +68,23 @@ export default function ProgressScreen() {
   const nativeLangLabel = NATIVE_LANGUAGES.find((l) => l.code === nativeLang)?.label ?? 'English';
   const nativeLangFlag = NATIVE_LANGUAGES.find((l) => l.code === nativeLang)?.flag ?? '🇬🇧';
 
+  const currentLevel = onboardingProfile?.languageLevel ?? 'beginner';
+  const currentLevelInfo = DIFFICULTY_LEVELS.find((l) => l.key === currentLevel) ?? DIFFICULTY_LEVELS[0];
+
   const handleSelectNativeLanguage = async (code: Language) => {
     await setNativeLanguage(code);
     setNativeLangModalVisible(false);
+  };
+
+  const handleSelectDifficulty = async (level: LanguageLevel) => {
+    await setLanguageLevel(level);
+    setDifficultyModalVisible(false);
+  };
+
+  const handleManageSubscription = () => {
+    if (Platform.OS === 'ios') {
+      Linking.openURL('https://apps.apple.com/account/subscriptions');
+    }
   };
 
   const handleClearStats = () => {
@@ -167,6 +188,53 @@ export default function ProgressScreen() {
           </Pressable>
         </Modal>
 
+        <TouchableOpacity
+          style={styles.nativeLangRow}
+          onPress={() => setDifficultyModalVisible(true)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.nativeLangLabel}>Difficulty</Text>
+          <View style={styles.nativeLangValue}>
+            <Text style={styles.nativeLangFlag}>{currentLevelInfo.icon}</Text>
+            <Text style={styles.nativeLangText}>{currentLevelInfo.label}</Text>
+            <Text style={styles.nativeLangChevron}>▼</Text>
+          </View>
+        </TouchableOpacity>
+
+        <Modal
+          visible={difficultyModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setDifficultyModalVisible(false)}
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => setDifficultyModalVisible(false)}
+          >
+            <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+              <Text style={styles.modalTitle}>Difficulty</Text>
+              <Text style={styles.modalSubtitle}>Changes which lessons appear on the Home tab</Text>
+              {DIFFICULTY_LEVELS.map(({ key, label, icon }) => (
+                <TouchableOpacity
+                  key={key}
+                  style={[styles.modalOption, currentLevel === key && styles.modalOptionSelected]}
+                  onPress={() => handleSelectDifficulty(key)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.modalOptionFlag}>{icon}</Text>
+                  <Text style={styles.modalOptionLabel}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                style={styles.modalCancel}
+                onPress={() => setDifficultyModalVisible(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
         {isLoadingProgress ? (
           <View style={styles.loadingSection}>
             <ActivityIndicator size="large" color="#29B6F6" />
@@ -225,6 +293,14 @@ export default function ProgressScreen() {
                 }}
               />
             </View>
+
+            <TouchableOpacity
+              style={styles.manageSubButton}
+              onPress={handleManageSubscription}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.manageSubButtonText}>Manage Subscription</Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.clearStatsButton}
@@ -513,8 +589,26 @@ const styles = StyleSheet.create({
     color: '#57534E',
     marginBottom: 16,
   },
-  clearStatsButton: {
+  manageSubButton: {
     marginTop: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+    backgroundColor: '#29B6F6',
+    alignItems: 'center',
+    shadowColor: '#29B6F6',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  manageSubButtonText: {
+    fontSize: 15,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  clearStatsButton: {
+    marginTop: 12,
     paddingVertical: 14,
     paddingHorizontal: 20,
     borderRadius: 16,

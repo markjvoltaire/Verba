@@ -7,6 +7,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Linking,
 } from "react-native";
 import Purchases, {
   type PurchasesPackage,
@@ -96,15 +97,32 @@ export default function CustomPaywall({
       }
     } catch (e: unknown) {
       const err = e as { userCancelled?: boolean };
-      if (!err?.userCancelled) {
-        Alert.alert(
-          "Purchase Failed",
-          e instanceof Error
-            ? e.message
-            : "Something went wrong. Please try again.",
-          [{ text: "OK" }],
-        );
+      if (err?.userCancelled) return;
+
+      // StoreKit 2 can throw STORE_PROBLEM while the transaction still
+      // completes in the background. Re-check entitlements before alerting.
+      try {
+        await new Promise((r) => setTimeout(r, 1500));
+        const info = await Purchases.getCustomerInfo();
+        const hasPro =
+          typeof info.entitlements?.active?.[PRO_ENTITLEMENT_ID] !==
+          "undefined";
+        if (hasPro) {
+          onPurchaseCompleted?.();
+          onDismiss();
+          return;
+        }
+      } catch {
+        // fall through to the alert
       }
+
+      Alert.alert(
+        "Purchase Failed",
+        e instanceof Error
+          ? e.message
+          : "Something went wrong. Please try again.",
+        [{ text: "OK" }],
+      );
     } finally {
       setPurchasingId(null);
     }
@@ -258,6 +276,22 @@ export default function CustomPaywall({
             Continue without subscribing
           </Text>
         </TouchableOpacity>
+
+        <View style={styles.legalRow}>
+          <TouchableOpacity
+            onPress={() => Linking.openURL("https://verbatalk.carrd.co/")}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.legalLink}>Terms of Use</Text>
+          </TouchableOpacity>
+          <Text style={styles.legalDot}>·</Text>
+          <TouchableOpacity
+            onPress={() => Linking.openURL("https://verbatalk.carrd.co/")}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.legalLink}>Privacy Policy</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </View>
   );
@@ -419,5 +453,21 @@ const styles = StyleSheet.create({
     color: "#57534E",
     textAlign: "center",
     marginBottom: 24,
+  },
+  legalRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 16,
+    gap: 8,
+  },
+  legalLink: {
+    fontSize: 13,
+    color: "#94A3B8",
+    textDecorationLine: "underline",
+  },
+  legalDot: {
+    fontSize: 13,
+    color: "#94A3B8",
   },
 });

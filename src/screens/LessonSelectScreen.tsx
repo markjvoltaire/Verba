@@ -100,8 +100,8 @@ export default function LessonSelectScreen({
   const { streak, todayPhraseCount, dailyGoal } = useStreak();
   const { todayUsageSeconds } = useUsage();
   const { getCompletedCount } = useLessonProgress();
-  const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty | null>(null);
   const [lessons, setLessons] = useState<typeof FALLBACK_LESSONS>(FALLBACK_LESSONS);
+  const userLevel: Difficulty = (onboardingProfile?.languageLevel as Difficulty) ?? 'beginner';
 
   useEffect(() => {
     getLessons(language)
@@ -117,16 +117,40 @@ export default function LessonSelectScreen({
   const currentLang = LANGUAGES.find((l) => l.code === language);
   const goalProgress = dailyGoal > 0 ? Math.min(todayPhraseCount / dailyGoal, 1) : 0;
 
-  const handleLesson = (lesson: (typeof lessons)[0]) => {
+  const handleLesson = async (lesson: (typeof lessons)[0]) => {
     const params = {
       scenario: lesson.scenario,
       difficulty: DIFFICULTY_MAP[lesson.difficulty],
     };
-    navigation.navigate("PracticeList", params);
+    const rcUserId = revenueCatUserId ?? (await Purchases.getAppUserID().catch(() => null));
+    try {
+      if (rcUserId) {
+        const plan = await getPlanFromBackend(rcUserId);
+        if (plan === "pro") {
+          navigation.navigate("PracticeList", params);
+          return;
+        }
+      }
+      const result = await RevenueCatUI.presentPaywallIfNeeded({
+        requiredEntitlementIdentifier: "pro",
+      });
+      if (
+        result === PAYWALL_RESULT.NOT_PRESENTED ||
+        result === PAYWALL_RESULT.PURCHASED ||
+        result === PAYWALL_RESULT.RESTORED
+      ) {
+        if (result === PAYWALL_RESULT.PURCHASED || result === PAYWALL_RESULT.RESTORED) {
+          if (rcUserId) await updatePlanToPro(rcUserId);
+        }
+        navigation.navigate("PracticeList", params);
+      }
+    } catch {
+      navigation.navigate("PracticeList", params);
+    }
   };
 
   const filteredSections = DIFFICULTY_SECTIONS.filter(
-    (section) => selectedDifficulty === null || section.key === selectedDifficulty
+    (section) => section.key === userLevel
   );
 
   return (
@@ -218,41 +242,6 @@ export default function LessonSelectScreen({
           </Pressable>
         </Pressable>
       </Modal>
-
-      {/* ── DIFFICULTY FILTER ── */}
-      <View style={styles.filterContainer}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterRow}
-        >
-          {DIFFICULTY_SECTIONS.map((section) => {
-            const isActive = selectedDifficulty === section.key;
-            return (
-              <TouchableOpacity
-                key={section.key}
-                style={[
-                  styles.filterChip,
-                  isActive && { backgroundColor: section.color },
-                ]}
-                onPress={() => setSelectedDifficulty(section.key)}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name={section.icon}
-                  size={14}
-                  color={isActive ? "#FFFFFF" : "#6B7280"}
-                />
-                <Text
-                  style={[styles.filterChipText, isActive && styles.filterChipTextActive]}
-                >
-                  {section.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
 
       {/* ── LESSONS ── */}
       <ScrollView
@@ -476,40 +465,6 @@ const styles = StyleSheet.create({
     height: 4,
     backgroundColor: "#10B981",
     borderRadius: 2,
-  },
-
-  // ── FILTER CHIPS ──
-  filterContainer: {
-    paddingTop: 20,
-    paddingBottom: 8,
-  },
-  filterRow: {
-    flexDirection: "row",
-    gap: 8,
-    paddingHorizontal: 20,
-  },
-  filterChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 24,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  filterChipActive: {
-    backgroundColor: "#E2E8F0",
-    borderColor: "#CBD5E1",
-  },
-  filterChipText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#6B7280",
-  },
-  filterChipTextActive: {
-    color: "#1E293B",
   },
 
   // ── LESSONS ──

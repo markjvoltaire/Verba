@@ -33,6 +33,7 @@ interface AppContextType {
   onboardingProfile: OnboardingProfile | null;
   setOnboardingProfile: (profile: OnboardingProfile) => Promise<void>;
   setNativeLanguage: (lang: Language) => Promise<void>;
+  setLanguageLevel: (level: LanguageLevel) => Promise<void>;
   loadStoredData: () => Promise<void>;
   user: string | null;
   userChecked: boolean;
@@ -68,6 +69,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const prev = onboardingProfile;
     if (!prev) return;
     const next = { ...prev, nativeLanguage: lang };
+    setOnboardingProfileState(next);
+    await AsyncStorage.setItem(ONBOARDING_PROFILE_KEY, JSON.stringify(next));
+  }, [onboardingProfile]);
+
+  const setLanguageLevel = useCallback(async (level: LanguageLevel) => {
+    const prev = onboardingProfile;
+    if (!prev) return;
+    const next = { ...prev, languageLevel: level };
     setOnboardingProfileState(next);
     await AsyncStorage.setItem(ONBOARDING_PROFILE_KEY, JSON.stringify(next));
   }, [onboardingProfile]);
@@ -124,6 +133,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         onboardingProfile,
         setOnboardingProfile,
         setNativeLanguage,
+        setLanguageLevel,
         loadStoredData,
         user,
         userChecked,

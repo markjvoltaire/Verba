@@ -13,9 +13,11 @@ import {
   ActivityIndicator,
   Alert,
   SafeAreaView,
+  Image,
 } from 'react-native';
 import Purchases from 'react-native-purchases';
 import RevenueCatUI from 'react-native-purchases-ui';
+import * as Notifications from 'expo-notifications';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SLIDE_DISTANCE = SCREEN_WIDTH * 0.15;
@@ -79,7 +81,7 @@ const LANGUAGE_LABELS: Record<Language, string> = {
   en: 'English',
 };
 
-const TOTAL_STEPS = 14;
+const TOTAL_STEPS = 16;
 const WELCOME_STEP = 1;
 const LANGUAGE_FADE_STEP = 3;
 const NATIVE_LANGUAGE_STEP = 5;
@@ -87,7 +89,9 @@ const PRONUNCIATION_PREP_STEP = 6;
 const PRONUNCIATION_STEP = 7;
 const SPEAKING_INSIGHT_STEP = 8;
 const PLAN_DISPLAY_STEP = 12;
-const PAYWALL_STEP = 13;
+const NOTIFICATION_STEP = 13;
+const PRE_PAYWALL_STEP = 14;
+const PAYWALL_STEP = 15;
 const WELCOME_DURATION_MS = 2700;
 const FADE_SCREEN_DURATION_MS = 3500;
 
@@ -155,6 +159,20 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     new Animated.Value(18),
   ]).current;
   const insightBtnOpacity = useRef(new Animated.Value(0)).current;
+  const notifIconScale = useRef(new Animated.Value(0)).current;
+  const notifTitleOpacity = useRef(new Animated.Value(0)).current;
+  const notifTitleTranslateY = useRef(new Animated.Value(20)).current;
+  const notifSubtitleOpacity = useRef(new Animated.Value(0)).current;
+  const notifBtnOpacity = useRef(new Animated.Value(0)).current;
+  const notifBtnTranslateY = useRef(new Animated.Value(20)).current;
+  const prePayEmojiScale = useRef(new Animated.Value(0)).current;
+  const prePayTitleOpacity = useRef(new Animated.Value(0)).current;
+  const prePayTitleTranslateY = useRef(new Animated.Value(20)).current;
+  const prePaySubtitleOpacity = useRef(new Animated.Value(0)).current;
+  const prePayBadgeOpacity = useRef(new Animated.Value(0)).current;
+  const prePayBadgeScale = useRef(new Animated.Value(0.8)).current;
+  const prePayBtnOpacity = useRef(new Animated.Value(0)).current;
+  const prePayBtnTranslateY = useRef(new Animated.Value(20)).current;
 
   const canProceed = () => {
     switch (step) {
@@ -171,6 +189,8 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       case 10: return ageRange !== null;
       case 11: return learningSpeed !== null;
       case PLAN_DISPLAY_STEP: return true;
+      case NOTIFICATION_STEP: return true;
+      case PRE_PAYWALL_STEP: return true;
       default: return false;
     }
   };
@@ -185,9 +205,15 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     } else if (step === PLAN_DISPLAY_STEP) {
       prevStepRef.current = step;
       setStep(11);
-    } else if (step === PAYWALL_STEP) {
+    } else if (step === NOTIFICATION_STEP) {
       prevStepRef.current = step;
       setStep(PLAN_DISPLAY_STEP);
+    } else if (step === PRE_PAYWALL_STEP) {
+      prevStepRef.current = step;
+      setStep(NOTIFICATION_STEP);
+    } else if (step === PAYWALL_STEP) {
+      prevStepRef.current = step;
+      setStep(PRE_PAYWALL_STEP);
     } else if (step > 0 && step !== WELCOME_STEP && step !== LANGUAGE_FADE_STEP && step !== PAYWALL_STEP) {
       prevStepRef.current = step;
       setStep(step - 1);
@@ -249,7 +275,26 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
 
   const handleNext = async () => {
     if (step === PLAN_DISPLAY_STEP) {
-      completeOnboardingAndGoToMain();
+      if (!learningLanguage || !languageLevel || !nativeLanguage || !ageRange || !learningSpeed) return;
+      const profile: OnboardingProfile = {
+        name: name.trim(),
+        learningLanguage,
+        languageLevel,
+        motivation: motivation.trim(),
+        nativeLanguage,
+        ageRange,
+        learningSpeed,
+      };
+      const rcUserId = revenueCatUserId ?? (await Purchases.getAppUserID().catch(() => null));
+      if (rcUserId) {
+        await syncUserToBackend(rcUserId, profile);
+      }
+      prevStepRef.current = step;
+      setStep(NOTIFICATION_STEP);
+    } else if (step === PRE_PAYWALL_STEP) {
+      prevStepRef.current = step;
+      setPaywallLoading(true);
+      setStep(PAYWALL_STEP);
     } else if (step < TOTAL_STEPS - 1) {
       prevStepRef.current = step;
       setStep(step + 1);
@@ -257,7 +302,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
   };
 
   useEffect(() => {
-    if (step === PAYWALL_STEP || step === PLAN_DISPLAY_STEP || step === WELCOME_STEP || step === LANGUAGE_FADE_STEP || step === PRONUNCIATION_PREP_STEP || step === SPEAKING_INSIGHT_STEP || step < 0 || step >= TOTAL_STEPS) return;
+    if (step === PAYWALL_STEP || step === PLAN_DISPLAY_STEP || step === WELCOME_STEP || step === LANGUAGE_FADE_STEP || step === PRONUNCIATION_PREP_STEP || step === SPEAKING_INSIGHT_STEP || step === NOTIFICATION_STEP || step === PRE_PAYWALL_STEP || step < 0 || step >= TOTAL_STEPS) return;
     const prevStep = prevStepRef.current;
     const isForward = step > prevStep;
     const isInitial = step === 0 && prevStep === 0;
@@ -408,6 +453,58 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       }),
       Animated.parallel(statAnimations),
       Animated.timing(insightBtnOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+    ]).start();
+  }, [step]);
+
+  useEffect(() => {
+    if (step !== NOTIFICATION_STEP) return;
+    notifIconScale.setValue(0);
+    notifTitleOpacity.setValue(0);
+    notifTitleTranslateY.setValue(20);
+    notifSubtitleOpacity.setValue(0);
+    notifBtnOpacity.setValue(0);
+    notifBtnTranslateY.setValue(20);
+
+    Animated.sequence([
+      Animated.spring(notifIconScale, { toValue: 1, friction: 4, tension: 80, useNativeDriver: true }),
+      Animated.parallel([
+        Animated.timing(notifTitleOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+        Animated.timing(notifTitleTranslateY, { toValue: 0, duration: 400, useNativeDriver: true }),
+      ]),
+      Animated.timing(notifSubtitleOpacity, { toValue: 1, duration: 350, useNativeDriver: true }),
+      Animated.parallel([
+        Animated.timing(notifBtnOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.timing(notifBtnTranslateY, { toValue: 0, duration: 300, useNativeDriver: true }),
+      ]),
+    ]).start();
+  }, [step]);
+
+  useEffect(() => {
+    if (step !== PRE_PAYWALL_STEP) return;
+    prePayEmojiScale.setValue(0);
+    prePayTitleOpacity.setValue(0);
+    prePayTitleTranslateY.setValue(20);
+    prePaySubtitleOpacity.setValue(0);
+    prePayBadgeOpacity.setValue(0);
+    prePayBadgeScale.setValue(0.8);
+    prePayBtnOpacity.setValue(0);
+    prePayBtnTranslateY.setValue(20);
+
+    Animated.sequence([
+      Animated.spring(prePayEmojiScale, { toValue: 1, friction: 4, tension: 80, useNativeDriver: true }),
+      Animated.parallel([
+        Animated.timing(prePayTitleOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+        Animated.timing(prePayTitleTranslateY, { toValue: 0, duration: 400, useNativeDriver: true }),
+      ]),
+      Animated.timing(prePaySubtitleOpacity, { toValue: 1, duration: 350, useNativeDriver: true }),
+      Animated.parallel([
+        Animated.timing(prePayBadgeOpacity, { toValue: 1, duration: 350, useNativeDriver: true }),
+        Animated.spring(prePayBadgeScale, { toValue: 1, friction: 5, tension: 70, useNativeDriver: true }),
+      ]),
+      Animated.parallel([
+        Animated.timing(prePayBtnOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.timing(prePayBtnTranslateY, { toValue: 0, duration: 300, useNativeDriver: true }),
+      ]),
     ]).start();
   }, [step]);
 
@@ -878,6 +975,117 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     );
   }
 
+  if (step === NOTIFICATION_STEP) {
+    return (
+      <View style={styles.notifScreen}>
+        <SafeAreaView style={styles.prepSafeArea}>
+          <TouchableOpacity
+            style={styles.prepBackBtn}
+            onPress={handleBack}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.prepBackBtnText}>← Back</Text>
+          </TouchableOpacity>
+          <View style={styles.notifContent}>
+            <Animated.Text style={[styles.notifIcon, { transform: [{ scale: notifIconScale }] }]}>
+              🔔
+            </Animated.Text>
+            <Animated.Text
+              style={[
+                styles.notifTitle,
+                { opacity: notifTitleOpacity, transform: [{ translateY: notifTitleTranslateY }] },
+              ]}
+            >
+              Don't lose your streak
+            </Animated.Text>
+            <Animated.Text style={[styles.notifSubtitle, { opacity: notifSubtitleOpacity }]}>
+
+              We send notifications to help track your progress and keep you on schedule. Get a friendly reminder each day to keep practicing — learners who enable notifications are 3× more likely to stick with it.
+            </Animated.Text>
+            <Animated.View
+              style={[
+                styles.notifBtnWrap,
+                { opacity: notifBtnOpacity, transform: [{ translateY: notifBtnTranslateY }] },
+              ]}
+            >
+              <TouchableOpacity
+                style={styles.notifAllowBtn}
+                activeOpacity={0.85}
+                onPress={async () => {
+                  await Notifications.requestPermissionsAsync();
+                  handleNext();
+                }}
+              >
+                <Text style={styles.notifAllowBtnText}>Enable Reminders</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.notifSkipBtn}
+                activeOpacity={0.7}
+                onPress={handleNext}
+              >
+                <Text style={styles.notifSkipBtnText}>Maybe later</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </View>
+        </SafeAreaView>
+      </View>
+    );
+  }
+
+  if (step === PRE_PAYWALL_STEP) {
+    const langName = learningLanguage ? LANGUAGE_LABELS[learningLanguage] : 'your new language';
+    return (
+      <View style={styles.prePayScreen}>
+        <SafeAreaView style={styles.prepSafeArea}>
+          <TouchableOpacity
+            style={styles.prePayCloseBtn}
+            onPress={handleBack}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.prePayCloseBtnText}>✕</Text>
+          </TouchableOpacity>
+          <View style={styles.prePayContent}>
+            <Animated.Text
+              style={[
+                styles.prePayTitle,
+                { opacity: prePayTitleOpacity, transform: [{ translateY: prePayTitleTranslateY }] },
+              ]}
+            >
+              We want you to{'\n'}try Verba for free.
+            </Animated.Text>
+            <Animated.View style={[styles.prePayPhoneWrap, { transform: [{ scale: prePayEmojiScale }] }]}>
+              <Image
+                source={require('../../assets/app-preview.png')}
+                style={styles.prePayPhoneImage}
+                resizeMode="cover"
+              />
+            </Animated.View>
+            <Animated.View style={[styles.prePayBadge, { opacity: prePayBadgeOpacity, transform: [{ scale: prePayBadgeScale }] }]}>
+              <Text style={styles.prePayBadgeCheck}>✓</Text>
+              <Text style={styles.prePayBadgeText}>No Payment Due Now</Text>
+            </Animated.View>
+            <Animated.View
+              style={[
+                styles.prePayBtnWrap,
+                { opacity: prePayBtnOpacity, transform: [{ translateY: prePayBtnTranslateY }] },
+              ]}
+            >
+              <TouchableOpacity
+                style={styles.prePayBtn}
+                activeOpacity={0.85}
+                onPress={handleNext}
+              >
+                <Text style={styles.prePayBtnText}>Try for Free</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </View>
+        </SafeAreaView>
+      </View>
+    );
+  }
+
   if (step === PAYWALL_STEP) {
     return (
       <View style={styles.paywallScreen}>
@@ -1294,5 +1502,156 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.82)',
     lineHeight: 22,
     flex: 1,
+  },
+  notifScreen: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  notifContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 36,
+  },
+  notifIcon: {
+    fontSize: 72,
+    marginBottom: 28,
+  },
+  notifTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#1C1917',
+    textAlign: 'center',
+    fontFamily: 'Georgia',
+    lineHeight: 38,
+    marginBottom: 16,
+  },
+  notifSubtitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#57534E',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 48,
+  },
+  notifBtnWrap: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 16,
+  },
+  notifAllowBtn: {
+    backgroundColor: '#29B6F6',
+    paddingVertical: 18,
+    paddingHorizontal: 56,
+    borderRadius: 32,
+    width: '100%',
+    alignItems: 'center',
+    shadowColor: '#29B6F6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  notifAllowBtnText: {
+    fontSize: 19,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
+  },
+  notifSkipBtn: {
+    paddingVertical: 12,
+  },
+  notifSkipBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#94A3B8',
+  },
+  prePayScreen: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  prePayCloseBtn: {
+    position: 'absolute',
+    top: 42,
+    right: 20,
+    zIndex: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  prePayCloseBtnText: {
+    fontSize: 18,
+    color: '#1C1917',
+    fontWeight: '600',
+  },
+  prePayContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+  },
+  prePayTitle: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: '#1C1917',
+    textAlign: 'center',
+    fontFamily: 'Georgia',
+    lineHeight: 40,
+    marginBottom: 32,
+  },
+  prePayPhoneWrap: {
+    marginBottom: 28,
+    alignItems: 'center',
+  },
+  prePayPhoneImage: {
+    width: 250,
+    height: 420,
+    borderRadius: 28,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 6,
+  },
+  prePayBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 32,
+    gap: 8,
+  },
+  prePayBadgeCheck: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#22C55E',
+  },
+  prePayBadgeText: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#1C1917',
+  },
+  prePayBtnWrap: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  prePayBtn: {
+    backgroundColor: '#29B6F6',
+    paddingVertical: 18,
+    borderRadius: 32,
+    width: '100%',
+    alignItems: 'center',
+    shadowColor: '#29B6F6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  prePayBtnText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
   },
 });
