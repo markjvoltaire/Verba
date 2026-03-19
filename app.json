@@ -52,15 +52,7 @@
     },
     "plugins": [
       "expo-audio",
-      "expo-apple-authentication",
-      [
-        "react-native-purchases",
-        {
-          "ios": {
-            "usesStoreKit2JamSandbox": true
-          }
-        }
-      ]
+      "expo-apple-authentication"
     ]
   }
 }
