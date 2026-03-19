@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
-  useWindowDimensions,
   Animated,
+  PanResponder,
+  Dimensions,
   ActivityIndicator,
 } from "react-native";
 import { useAudioPlayer, setAudioModeAsync } from "expo-audio";
@@ -17,8 +17,17 @@ import { useApp } from "../context/AppContext";
 import { useSavedPhrases } from "../context/SavedPhrasesContext";
 import type { SavedPhrase } from "../context/SavedPhrasesContext";
 
-const PRIMARY = "#29B6F6";
-const FLIP_DURATION = 380;
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const SWIPE_THRESHOLD = 120;
+const SWIPE_OUT_DURATION = 300;
+const FLIP_DURATION = 350;
+
+const BG = "#0F172A";
+const CARD_BG = "#1E293B";
+const CARD_BORDER = "#334155";
+const ACCENT = "#29B6F6";
+const CORRECT_COLOR = "#22C55E";
+const WRONG_COLOR = "#EF4444";
 
 const TTS_LANG: Record<string, string> = {
   es: "es",
@@ -27,54 +36,36 @@ const TTS_LANG: Record<string, string> = {
   en: "en",
 };
 
-type PhraseFilter = "all" | "es" | "fr" | "it" | "en";
-
-const PHRASE_FILTERS: { value: PhraseFilter; label: string; flag: string }[] = [
-  { value: "all", label: "All", flag: "🌐" },
-  { value: "es", label: "Spanish", flag: "🇪🇸" },
-  { value: "fr", label: "French", flag: "🇫🇷" },
-  { value: "it", label: "Italian", flag: "🇮🇹" },
-  { value: "en", label: "English", flag: "🇬🇧" },
-];
-
-const LANG_COLORS: Record<string, string> = {
-  es: "#EF4444",
-  fr: "#3B82F6",
-  it: "#22C55E",
-  en: "#8B5CF6",
-};
-
-function FlipCard({
-  isFlipped,
-  onFlip,
+function SwipeCard({
   phrase,
   translation,
   showTranslationFirst,
+  isFlipped,
+  onFlip,
   onPlay,
-  onRemove,
-  isLoading,
-  langColor,
-  langFlag,
+  isPlayLoading,
+  onSwipeLeft,
+  onSwipeRight,
+  isFavorited,
+  onToggleFavorite,
 }: {
-  isFlipped: boolean;
-  onFlip: () => void;
   phrase: string;
   translation: string;
   showTranslationFirst?: boolean;
+  isFlipped: boolean;
+  onFlip: () => void;
   onPlay: () => void;
-  onRemove: () => void;
-  isLoading: boolean;
-  langColor: string;
-  langFlag: string;
+  isPlayLoading: boolean;
+  onSwipeLeft: () => void;
+  onSwipeRight: () => void;
+  isFavorited: boolean;
+  onToggleFavorite: () => void;
 }) {
-  const { width } = useWindowDimensions();
-  const cardWidth = width - 48;
+  const position = useRef(new Animated.ValueXY()).current;
+  const flipAnim = useRef(new Animated.Value(0)).current;
 
   const frontText = showTranslationFirst ? translation : phrase;
   const backText = showTranslationFirst ? phrase : translation;
-  const frontHint = showTranslationFirst ? "Tap to see phrase" : "Tap to see translation";
-
-  const flipAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.timing(flipAnim, {
@@ -84,11 +75,11 @@ function FlipCard({
     }).start();
   }, [isFlipped, flipAnim]);
 
-  const frontRotate = flipAnim.interpolate({
+  const frontRotateY = flipAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ["0deg", "180deg"],
   });
-  const backRotate = flipAnim.interpolate({
+  const backRotateY = flipAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ["180deg", "360deg"],
   });
@@ -101,94 +92,165 @@ function FlipCard({
     outputRange: [0, 0, 1, 1],
   });
 
-  return (
-    <TouchableOpacity
-      style={[styles.cardWrapper, { width: cardWidth }]}
-      onPress={onFlip}
-      activeOpacity={0.97}
-    >
-      {/* Back face (translation) — blue */}
-      <Animated.View
-        style={[
-          styles.cardFace,
-          styles.cardBack,
-          {
-            width: cardWidth,
-            opacity: backOpacity,
-            transform: [{ perspective: 1200 }, { rotateY: backRotate }],
-          },
-        ]}
-      >
-        <View style={styles.cardTopRow}>
-          <View style={[styles.cardLangDot, { backgroundColor: "rgba(255,255,255,0.3)" }]} />
-          <Text style={styles.cardBackHint}>Tap to flip back</Text>
-        </View>
-        <View style={styles.cardBody}>
-          <Text style={styles.cardBackText}>{backText}</Text>
-        </View>
-        <View style={styles.cardBottomRow}>
-          <TouchableOpacity
-            style={styles.cardIconBtn}
-            onPress={(e) => { e.stopPropagation(); onPlay(); }}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator size="small" color="rgba(255,255,255,0.9)" />
-            ) : (
-              <Ionicons name="volume-high" size={20} color="rgba(255,255,255,0.9)" />
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.cardIconBtn}
-            onPress={(e) => { e.stopPropagation(); onRemove(); }}
-          >
-            <Ionicons name="trash-outline" size={20} color="rgba(255,255,255,0.7)" />
-          </TouchableOpacity>
-        </View>
-      </Animated.View>
+  const rotate = position.x.interpolate({
+    inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
+    outputRange: ["-12deg", "0deg", "12deg"],
+    extrapolate: "clamp",
+  });
 
-      {/* Front face (phrase) — white */}
+  const correctOverlayOpacity = position.x.interpolate({
+    inputRange: [0, SWIPE_THRESHOLD],
+    outputRange: [0, 0.35],
+    extrapolate: "clamp",
+  });
+
+  const wrongOverlayOpacity = position.x.interpolate({
+    inputRange: [-SWIPE_THRESHOLD, 0],
+    outputRange: [0.35, 0],
+    extrapolate: "clamp",
+  });
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gesture) =>
+        Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+      onPanResponderMove: (_, gesture) => {
+        position.setValue({ x: gesture.dx, y: 0 });
+      },
+      onPanResponderRelease: (_, gesture) => {
+        if (gesture.dx > SWIPE_THRESHOLD) {
+          Animated.timing(position, {
+            toValue: { x: SCREEN_WIDTH + 100, y: 0 },
+            duration: SWIPE_OUT_DURATION,
+            useNativeDriver: true,
+          }).start(() => onSwipeRight());
+        } else if (gesture.dx < -SWIPE_THRESHOLD) {
+          Animated.timing(position, {
+            toValue: { x: -SCREEN_WIDTH - 100, y: 0 },
+            duration: SWIPE_OUT_DURATION,
+            useNativeDriver: true,
+          }).start(() => onSwipeLeft());
+        } else {
+          Animated.spring(position, {
+            toValue: { x: 0, y: 0 },
+            friction: 6,
+            tension: 80,
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
+  const cardTransform = {
+    transform: [
+      { translateX: position.x },
+      { rotate },
+    ],
+  };
+
+  return (
+    <Animated.View
+      style={[styles.swipeCardOuter, cardTransform]}
+      {...panResponder.panHandlers}
+    >
+      {/* Correct overlay (green, right swipe) */}
       <Animated.View
-        style={[
-          styles.cardFace,
-          styles.cardFront,
-          {
-            width: cardWidth,
-            opacity: frontOpacity,
-            transform: [{ perspective: 1200 }, { rotateY: frontRotate }],
-          },
-        ]}
+        style={[styles.swipeOverlay, styles.swipeOverlayCorrect, { opacity: correctOverlayOpacity }]}
+        pointerEvents="none"
+      />
+      {/* Wrong overlay (red, left swipe) */}
+      <Animated.View
+        style={[styles.swipeOverlay, styles.swipeOverlayWrong, { opacity: wrongOverlayOpacity }]}
+        pointerEvents="none"
+      />
+
+      <TouchableOpacity
+        style={styles.cardTouchable}
+        onPress={onFlip}
+        activeOpacity={1}
       >
-        <View style={styles.cardTopRow}>
-          <View style={[styles.cardLangDot, { backgroundColor: langColor + "30" }]}>
-            <Text style={styles.cardLangFlag}>{langFlag}</Text>
+        {/* Back face */}
+        <Animated.View
+          style={[
+            styles.flipFace,
+            {
+              opacity: backOpacity,
+              transform: [{ perspective: 1200 }, { rotateY: backRotateY }],
+            },
+          ]}
+        >
+          <View style={styles.cardInnerTop}>
+            <TouchableOpacity
+              style={styles.cardActionBtn}
+              onPress={(e) => { e.stopPropagation(); onPlay(); }}
+              disabled={isPlayLoading}
+            >
+              {isPlayLoading ? (
+                <ActivityIndicator size="small" color="rgba(255,255,255,0.7)" />
+              ) : (
+                <Ionicons name="volume-high" size={22} color="rgba(255,255,255,0.7)" />
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.cardActionBtn}
+              onPress={(e) => { e.stopPropagation(); onToggleFavorite(); }}
+            >
+              <Ionicons
+                name={isFavorited ? "star" : "star-outline"}
+                size={22}
+                color={isFavorited ? "#FBBF24" : "rgba(255,255,255,0.4)"}
+              />
+            </TouchableOpacity>
           </View>
-          <Text style={styles.cardFrontHint}>{frontHint}</Text>
-        </View>
-        <View style={styles.cardBody}>
-          <Text style={styles.cardFrontText}>{frontText}</Text>
-        </View>
-        <View style={styles.cardBottomRow}>
-          <TouchableOpacity
-            style={[styles.cardIconBtnLight, { backgroundColor: langColor + "15" }]}
-            onPress={(e) => { e.stopPropagation(); onPlay(); }}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator size="small" color={langColor} />
-            ) : (
-              <Ionicons name="volume-high-outline" size={20} color={langColor} />
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.cardIconBtnLight}
-            onPress={(e) => { e.stopPropagation(); onRemove(); }}
-          >
-            <Ionicons name="trash-outline" size={20} color="#D1D5DB" />
-          </TouchableOpacity>
-        </View>
-      </Animated.View>
-    </TouchableOpacity>
+          <View style={styles.cardTextArea}>
+            <Text style={styles.cardText}>{backText}</Text>
+          </View>
+          <Text style={styles.flipHint}>tap to flip</Text>
+        </Animated.View>
+
+        {/* Front face */}
+        <Animated.View
+          style={[
+            styles.flipFace,
+            {
+              opacity: frontOpacity,
+              transform: [{ perspective: 1200 }, { rotateY: frontRotateY }],
+              zIndex: 1,
+            },
+          ]}
+        >
+          <View style={styles.cardInnerTop}>
+            <TouchableOpacity
+              style={styles.cardActionBtn}
+              onPress={(e) => { e.stopPropagation(); onPlay(); }}
+              disabled={isPlayLoading}
+            >
+              {isPlayLoading ? (
+                <ActivityIndicator size="small" color="rgba(255,255,255,0.7)" />
+              ) : (
+                <Ionicons name="volume-high-outline" size={22} color="rgba(255,255,255,0.5)" />
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.cardActionBtn}
+              onPress={(e) => { e.stopPropagation(); onToggleFavorite(); }}
+            >
+              <Ionicons
+                name={isFavorited ? "star" : "star-outline"}
+                size={22}
+                color={isFavorited ? "#FBBF24" : "rgba(255,255,255,0.3)"}
+              />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.cardTextArea}>
+            <Text style={styles.cardText}>{frontText}</Text>
+          </View>
+          <Text style={styles.flipHint}>tap to flip</Text>
+        </Animated.View>
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 
@@ -197,27 +259,22 @@ export default function FlashcardsScreen() {
   const { language } = useApp();
   const { getFlashcards, removeFromFlashcards } = useSavedPhrases();
   const allFlashcards = getFlashcards();
-  const [phraseFilter, setPhraseFilter] = useState<PhraseFilter>("all");
+
   const [currentIndex, setCurrentIndex] = useState(0);
   const [flippedId, setFlippedId] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [results, setResults] = useState<Record<string, "correct" | "wrong">>({});
+  const [cardKey, setCardKey] = useState(0);
 
-  const flashcards =
-    phraseFilter === "all"
-      ? allFlashcards
-      : allFlashcards.filter((c) => c.phrase.target_lang === phraseFilter);
-
-  // Reset index when filter changes
-  useEffect(() => {
-    setCurrentIndex(0);
-    setFlippedId(null);
-  }, [phraseFilter]);
+  const flashcards = allFlashcards;
 
   useEffect(() => {
     setAudioModeAsync({ playsInSilentMode: true });
   }, []);
 
   const currentCard = flashcards[currentIndex] ?? null;
+  const isFinished = currentIndex >= flashcards.length;
+
   const playText = currentCard
     ? currentCard.phrase.id.startsWith("translation_")
       ? currentCard.phrase.translation
@@ -239,48 +296,52 @@ export default function FlashcardsScreen() {
 
   useEffect(() => {
     if (!player) return;
-    const sub = player.addListener("playbackStatusUpdate", (status) => {
+    const sub = player.addListener("playbackStatusUpdate", (status: any) => {
       if (status.didJustFinish) setPlayingId(null);
     });
     return () => sub.remove();
   }, [player]);
 
-  const handlePrev = () => {
+  const advanceCard = useCallback((direction: "correct" | "wrong") => {
+    if (!currentCard) return;
+    setResults((prev) => ({ ...prev, [currentCard.id]: direction }));
+    setFlippedId(null);
+    setCurrentIndex((i) => i + 1);
+    setCardKey((k) => k + 1);
+  }, [currentCard]);
+
+  const handleUndo = useCallback(() => {
     if (currentIndex > 0) {
       setCurrentIndex((i) => i - 1);
       setFlippedId(null);
+      setCardKey((k) => k + 1);
     }
-  };
+  }, [currentIndex]);
 
-  const handleNext = () => {
-    if (currentIndex < flashcards.length - 1) {
-      setCurrentIndex((i) => i + 1);
-      setFlippedId(null);
-    }
-  };
-
-  const handleRemove = async (id: string) => {
-    await removeFromFlashcards(id);
+  const handleRestart = useCallback(() => {
+    setCurrentIndex(0);
     setFlippedId(null);
-    setCurrentIndex((i) => Math.max(0, Math.min(i, flashcards.length - 2)));
-  };
+    setResults({});
+    setCardKey((k) => k + 1);
+  }, []);
 
-  const getLangInfo = (card: SavedPhrase) => {
-    const lang = card.phrase.target_lang;
-    return {
-      color: LANG_COLORS[lang] ?? PRIMARY,
-      flag: PHRASE_FILTERS.find((f) => f.value === lang)?.flag ?? "🌐",
-    };
-  };
+  const correctCount = useMemo(
+    () => Object.values(results).filter((r) => r === "correct").length,
+    [results]
+  );
+  const wrongCount = useMemo(
+    () => Object.values(results).filter((r) => r === "wrong").length,
+    [results]
+  );
 
-  // ── EMPTY STATE ──
+  const progressPercent =
+    flashcards.length > 0
+      ? Math.round((currentIndex / flashcards.length) * 100)
+      : 0;
+
   if (allFlashcards.length === 0) {
     return (
-      <View style={styles.container}>
-        <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-          <Text style={styles.headerTitle}>Flashcards</Text>
-          <Text style={styles.headerSubtitle}>Review your saved phrases</Text>
-        </View>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.emptyState}>
           <View style={styles.emptyIconWrap}>
             <Text style={styles.emptyIcon}>🃏</Text>
@@ -294,168 +355,117 @@ export default function FlashcardsScreen() {
     );
   }
 
-  return (
-    <View style={styles.container}>
-      {/* ── BLUE HEADER ── */}
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <View style={styles.headerTop}>
-          <View>
-            <Text style={styles.headerTitle}>Flashcards</Text>
-            <Text style={styles.headerSubtitle}>
-              {allFlashcards.length} phrase{allFlashcards.length !== 1 ? "s" : ""} saved
-            </Text>
-          </View>
-          {flashcards.length > 0 && (
-            <View style={styles.progressBadge}>
-              <Text style={styles.progressBadgeText}>
-                {currentIndex + 1} / {flashcards.length}
-              </Text>
+  if (isFinished) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.summaryContainer}>
+          <Text style={styles.summaryEmoji}>🎉</Text>
+          <Text style={styles.summaryTitle}>Session Complete!</Text>
+          <Text style={styles.summarySubtitle}>
+            You reviewed {flashcards.length} card{flashcards.length !== 1 ? "s" : ""}
+          </Text>
+          <View style={styles.summaryStatsRow}>
+            <View style={styles.summaryStat}>
+              <View style={[styles.summaryDot, { backgroundColor: CORRECT_COLOR }]} />
+              <Text style={styles.summaryStatLabel}>Correct</Text>
+              <Text style={[styles.summaryStatValue, { color: CORRECT_COLOR }]}>{correctCount}</Text>
             </View>
-          )}
+            <View style={styles.summaryStat}>
+              <View style={[styles.summaryDot, { backgroundColor: WRONG_COLOR }]} />
+              <Text style={styles.summaryStatLabel}>Wrong</Text>
+              <Text style={[styles.summaryStatValue, { color: WRONG_COLOR }]}>{wrongCount}</Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.restartBtn}
+            onPress={handleRestart}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="refresh" size={18} color="#FFFFFF" />
+            <Text style={styles.restartBtnText}>Study Again</Text>
+          </TouchableOpacity>
         </View>
+      </View>
+    );
+  }
 
-        {/* Filter pills */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.pillsRow}
-        >
-          {PHRASE_FILTERS.map(({ value, label, flag }) => {
-            const isSelected = phraseFilter === value;
-            return (
-              <TouchableOpacity
-                key={value}
-                style={[styles.pill, isSelected && styles.pillSelected]}
-                onPress={() => setPhraseFilter(value)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.pillFlag}>{flag}</Text>
-                <Text style={[styles.pillText, isSelected && styles.pillTextSelected]}>
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Top bar */}
+      <View style={styles.topBar}>
+        <TouchableOpacity style={styles.topBarBtn} onPress={handleRestart}>
+          <Ionicons name="close" size={24} color="rgba(255,255,255,0.7)" />
+        </TouchableOpacity>
+        <Text style={styles.topBarCounter}>
+          {currentIndex + 1} / {flashcards.length}
+        </Text>
+        <View style={styles.topBarBtn}>
+          <Ionicons name="settings-outline" size={22} color="rgba(255,255,255,0.7)" />
+        </View>
       </View>
 
-      {/* ── CONTENT ── */}
-      {flashcards.length === 0 ? (
-        <View style={styles.filterEmpty}>
-          <Text style={styles.filterEmptyIcon}>🔍</Text>
-          <Text style={styles.filterEmptyText}>No cards for this language</Text>
+      {/* Progress bar */}
+      <View style={styles.progressTrack}>
+        <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+      </View>
+
+      {/* Swipe labels */}
+      <View style={styles.swipeLabelsRow}>
+        <View style={[styles.swipeLabel, styles.swipeLabelWrong]}>
+          <Text style={[styles.swipeLabelText, { color: WRONG_COLOR }]}>Wrong</Text>
         </View>
-      ) : (
-        <View style={styles.studyArea}>
-          {/* Progress bar */}
-          <View style={styles.progressBarTrack}>
-            <View
-              style={[
-                styles.progressBarFill,
-                {
-                  width: `${((currentIndex + 1) / flashcards.length) * 100}%`,
-                },
-              ]}
-            />
-          </View>
-
-          {/* Flip card */}
-          {currentCard && (() => {
-            const { color, flag } = getLangInfo(currentCard);
-            return (
-              <View style={styles.cardArea}>
-                <FlipCard
-                  key={currentCard.id}
-                  isFlipped={flippedId === currentCard.id}
-                  onFlip={() =>
-                    setFlippedId((prev) =>
-                      prev === currentCard.id ? null : currentCard.id
-                    )
-                  }
-                  phrase={currentCard.phrase.phrase}
-                  translation={currentCard.phrase.translation}
-                  showTranslationFirst={currentCard.phrase.id.startsWith("translation_")}
-                  onPlay={() => setPlayingId(currentCard.id)}
-                  onRemove={() => handleRemove(currentCard.id)}
-                  isLoading={playingId === currentCard.id}
-                  langColor={color}
-                  langFlag={flag}
-                />
-              </View>
-            );
-          })()}
-
-          {/* Navigation */}
-          <View style={styles.navRow}>
-            <TouchableOpacity
-              style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
-              onPress={handlePrev}
-              disabled={currentIndex === 0}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name="arrow-back"
-                size={20}
-                color={currentIndex === 0 ? "#D1D5DB" : "#111827"}
-              />
-              <Text
-                style={[
-                  styles.navBtnText,
-                  currentIndex === 0 && styles.navBtnTextDisabled,
-                ]}
-              >
-                Previous
-              </Text>
-            </TouchableOpacity>
-
-            <View style={styles.navCenter}>
-              <Text style={styles.navCounter}>
-                {currentIndex + 1} of {flashcards.length}
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              style={[
-                styles.navBtn,
-                styles.navBtnNext,
-                currentIndex === flashcards.length - 1 && styles.navBtnDisabled,
-              ]}
-              onPress={handleNext}
-              disabled={currentIndex === flashcards.length - 1}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.navBtnText,
-                  styles.navBtnTextNext,
-                  currentIndex === flashcards.length - 1 && styles.navBtnTextDisabled,
-                ]}
-              >
-                Next
-              </Text>
-              <Ionicons
-                name="arrow-forward"
-                size={20}
-                color={
-                  currentIndex === flashcards.length - 1 ? "#D1D5DB" : PRIMARY
-                }
-              />
-            </TouchableOpacity>
-          </View>
-
-          {/* All done state */}
-          {currentIndex === flashcards.length - 1 && flashcards.length > 1 && (
-            <TouchableOpacity
-              style={styles.restartBtn}
-              onPress={() => { setCurrentIndex(0); setFlippedId(null); }}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="refresh" size={16} color={PRIMARY} />
-              <Text style={styles.restartBtnText}>Start over</Text>
-            </TouchableOpacity>
-          )}
+        <View style={[styles.swipeLabel, styles.swipeLabelCorrect]}>
+          <Text style={[styles.swipeLabelText, { color: CORRECT_COLOR }]}>Correct</Text>
         </View>
-      )}
+      </View>
+
+      {/* Card area */}
+      <View style={styles.cardContainer}>
+        {currentCard && (
+          <SwipeCard
+            key={`${currentCard.id}-${cardKey}`}
+            phrase={currentCard.phrase.phrase}
+            translation={currentCard.phrase.translation}
+            showTranslationFirst={currentCard.phrase.id.startsWith("translation_")}
+            isFlipped={flippedId === currentCard.id}
+            onFlip={() =>
+              setFlippedId((prev) =>
+                prev === currentCard.id ? null : currentCard.id
+              )
+            }
+            onPlay={() => setPlayingId(currentCard.id)}
+            isPlayLoading={playingId === currentCard.id}
+            onSwipeLeft={() => advanceCard("wrong")}
+            onSwipeRight={() => advanceCard("correct")}
+            isFavorited={true}
+            onToggleFavorite={() => removeFromFlashcards(currentCard.id)}
+          />
+        )}
+      </View>
+
+      {/* Bottom bar */}
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
+        <TouchableOpacity
+          style={[styles.bottomBtn, currentIndex === 0 && styles.bottomBtnDisabled]}
+          onPress={handleUndo}
+          disabled={currentIndex === 0}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="arrow-undo"
+            size={24}
+            color={currentIndex === 0 ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.7)"}
+          />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.bottomBtn}
+          onPress={() => advanceCard("correct")}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="play" size={24} color="rgba(255,255,255,0.7)" />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -463,291 +473,165 @@ export default function FlashcardsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F0F4F8",
+    backgroundColor: BG,
   },
 
-  // ── HEADER ──────────────────────────────────────────────────────────────────
-  header: {
-    backgroundColor: PRIMARY,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-  },
-  headerTop: {
+  topBar: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#FFFFFF",
-    letterSpacing: -0.3,
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    color: "rgba(255,255,255,0.75)",
-    marginTop: 2,
-  },
-  progressBadge: {
-    backgroundColor: "rgba(255,255,255,0.2)",
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    alignSelf: "flex-start",
-  },
-  progressBadgeText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#FFFFFF",
-  },
-
-  // Filter pills
-  pillsRow: {
-    flexDirection: "row",
-    gap: 8,
-    paddingRight: 20,
-  },
-  pill: {
-    flexDirection: "row",
+  topBarBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
   },
-  pillSelected: {
-    backgroundColor: "#FFFFFF",
-  },
-  pillFlag: {
-    fontSize: 13,
-  },
-  pillText: {
-    fontSize: 12,
+  topBarCounter: {
+    fontSize: 16,
     fontWeight: "600",
-    color: "rgba(255,255,255,0.85)",
-  },
-  pillTextSelected: {
-    color: PRIMARY,
+    color: "rgba(255,255,255,0.8)",
+    letterSpacing: 0.5,
   },
 
-  // ── STUDY AREA ───────────────────────────────────────────────────────────────
-  studyArea: {
-    flex: 1,
-    paddingTop: 20,
-    paddingHorizontal: 24,
-    alignItems: "center",
-  },
-
-  // Progress bar
-  progressBarTrack: {
-    width: "100%",
-    height: 4,
-    backgroundColor: "#E5E7EB",
+  progressTrack: {
+    height: 3,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    marginHorizontal: 16,
     borderRadius: 2,
     overflow: "hidden",
-    marginBottom: 16,
   },
-  progressBarFill: {
+  progressFill: {
     height: "100%",
-    backgroundColor: PRIMARY,
+    backgroundColor: ACCENT,
     borderRadius: 2,
   },
 
-  // Dots
-  dotsRow: {
+  swipeLabelsRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    marginBottom: 20,
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    marginTop: 12,
   },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#D1D5DB",
+  swipeLabel: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
-  dotActive: {
-    width: 18,
-    backgroundColor: PRIMARY,
+  swipeLabelWrong: {
+    backgroundColor: "rgba(239,68,68,0.12)",
   },
-  dotsMore: {
+  swipeLabelCorrect: {
+    backgroundColor: "rgba(34,197,94,0.12)",
+  },
+  swipeLabelText: {
     fontSize: 11,
-    color: "#9CA3AF",
-    marginLeft: 2,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
   },
 
-  // Card area
-  cardArea: {
-    width: "100%",
+  cardContainer: {
+    flex: 1,
     alignItems: "center",
-    marginBottom: 28,
+    justifyContent: "center",
+    paddingHorizontal: 20,
   },
-  cardWrapper: {
-    height: 220,
+
+  swipeCardOuter: {
+    width: SCREEN_WIDTH - 40,
+    height: "85%",
+    maxHeight: 580,
   },
-  cardFace: {
+  swipeOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 20,
+    zIndex: 10,
+  },
+  swipeOverlayCorrect: {
+    backgroundColor: CORRECT_COLOR,
+  },
+  swipeOverlayWrong: {
+    backgroundColor: WRONG_COLOR,
+  },
+
+  cardTouchable: {
+    flex: 1,
+    borderRadius: 20,
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    overflow: "hidden",
+  },
+
+  flipFace: {
     position: "absolute",
     top: 0,
-    bottom: 0,
     left: 0,
     right: 0,
-    borderRadius: 20,
-    padding: 22,
+    bottom: 0,
+    padding: 24,
     justifyContent: "space-between",
-  },
-  cardFront: {
-    backgroundColor: "#FFFFFF",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.1,
-    shadowRadius: 16,
-    elevation: 6,
-    zIndex: 1,
-  },
-  cardBack: {
-    backgroundColor: PRIMARY,
-    shadowColor: PRIMARY,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 6,
-    zIndex: 0,
-  },
-  cardTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  cardLangDot: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cardLangFlag: {
-    fontSize: 16,
-  },
-  cardFrontHint: {
-    fontSize: 11,
-    color: "#9CA3AF",
-    fontWeight: "500",
-  },
-  cardBackHint: {
-    fontSize: 11,
-    color: "rgba(255,255,255,0.6)",
-    fontWeight: "500",
-  },
-  cardBody: {
-    flex: 1,
-    justifyContent: "center",
-  },
-  cardFrontText: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#111827",
-    letterSpacing: -0.3,
-    lineHeight: 30,
-  },
-  cardBackText: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#FFFFFF",
-    letterSpacing: -0.3,
-    lineHeight: 30,
-  },
-  cardBottomRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  cardIconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cardIconBtnLight: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "#F3F4F6",
-    alignItems: "center",
-    justifyContent: "center",
   },
 
-  // ── NAVIGATION ───────────────────────────────────────────────────────────────
-  navRow: {
+  cardInnerTop: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    width: "100%",
-    gap: 8,
   },
-  navBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+  cardActionBtn: {
+    width: 40,
+    height: 40,
     borderRadius: 12,
-    backgroundColor: "#FFFFFF",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  navBtnNext: {
-    backgroundColor: "rgba(41, 182, 246, 0.1)",
-  },
-  navBtnDisabled: {
-    opacity: 0.45,
-  },
-  navBtnText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#374151",
-  },
-  navBtnTextNext: {
-    color: PRIMARY,
-  },
-  navBtnTextDisabled: {
-    color: "#9CA3AF",
-  },
-  navCenter: {
-    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.06)",
     alignItems: "center",
+    justifyContent: "center",
   },
-  navCounter: {
-    fontSize: 13,
-    color: "#9CA3AF",
+
+  cardTextArea: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 12,
+  },
+  cardText: {
+    fontSize: 26,
+    fontWeight: "600",
+    color: "#FFFFFF",
+    textAlign: "center",
+    lineHeight: 36,
+    letterSpacing: -0.3,
+  },
+
+  flipHint: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.25)",
+    textAlign: "center",
     fontWeight: "500",
   },
 
-  // Restart
-  restartBtn: {
+  bottomBar: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    gap: 6,
-    marginTop: 16,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: PRIMARY,
+    paddingHorizontal: 40,
+    paddingTop: 12,
   },
-  restartBtnText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: PRIMARY,
+  bottomBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bottomBtnDisabled: {
+    opacity: 0.35,
   },
 
-  // ── EMPTY STATES ─────────────────────────────────────────────────────────────
   emptyState: {
     flex: 1,
     alignItems: "center",
@@ -758,7 +642,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: "rgba(41, 182, 246, 0.1)",
+    backgroundColor: "rgba(41,182,246,0.15)",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 20,
@@ -767,29 +651,76 @@ const styles = StyleSheet.create({
     fontSize: 36,
   },
   emptyTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "700",
-    color: "#111827",
+    color: "#FFFFFF",
     marginBottom: 10,
     textAlign: "center",
   },
   emptyText: {
     fontSize: 15,
-    color: "#6B7280",
+    color: "rgba(255,255,255,0.5)",
     textAlign: "center",
     lineHeight: 22,
   },
-  filterEmpty: {
+
+  summaryContainer: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    paddingHorizontal: 40,
   },
-  filterEmptyIcon: {
+  summaryEmoji: {
+    fontSize: 56,
+    marginBottom: 16,
+  },
+  summaryTitle: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    marginBottom: 8,
+    letterSpacing: -0.5,
+  },
+  summarySubtitle: {
+    fontSize: 16,
+    color: "rgba(255,255,255,0.5)",
+    marginBottom: 32,
+  },
+  summaryStatsRow: {
+    flexDirection: "row",
+    gap: 32,
+    marginBottom: 40,
+  },
+  summaryStat: {
+    alignItems: "center",
+    gap: 6,
+  },
+  summaryDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  summaryStatLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.5)",
+  },
+  summaryStatValue: {
     fontSize: 32,
+    fontWeight: "800",
   },
-  filterEmptyText: {
-    fontSize: 15,
-    color: "#9CA3AF",
+  restartBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: ACCENT,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 16,
+  },
+  restartBtnText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
 });
