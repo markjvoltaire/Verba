@@ -6,6 +6,10 @@ const ONBOARDING_KEY = '@verba_onboarding_done';
 const ONBOARDING_PROFILE_KEY = '@verba_onboarding_profile';
 const USER_ID_KEY = '@verba_user_id';
 const USER_EMAIL_KEY = '@verba_user_email';
+const AI_DATA_CONSENT_KEY = '@verba_ai_data_consent_v1';
+
+/** Bump when disclosure copy changes so you can re-prompt if needed. */
+export const AI_DATA_CONSENT_VERSION = '1';
 
 export type Language = 'es' | 'fr' | 'it' | 'en';
 
@@ -39,6 +43,9 @@ interface AppContextType {
   userChecked: boolean;
   userEmail: string | null;
   setUserEmail: (email: string | null) => Promise<void>;
+  /** User agreed to share personal data with third-party AI (e.g. OpenAI) for app features. */
+  hasAiDataConsent: boolean;
+  setAiDataConsent: (accepted: boolean) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -49,7 +56,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [onboardingProfile, setOnboardingProfileState] = useState<OnboardingProfile | null>(null);
   const [user, setUserState] = useState<string | null>(null);
   const [userEmail, setUserEmailState] = useState<string | null>(null);
+  const [hasAiDataConsent, setHasAiDataConsentState] = useState(false);
   const [userChecked, setUserChecked] = useState(false);
+
+  const setAiDataConsent = useCallback(async (accepted: boolean) => {
+    setHasAiDataConsentState(accepted);
+    if (accepted) {
+      await AsyncStorage.setItem(AI_DATA_CONSENT_KEY, AI_DATA_CONSENT_VERSION);
+    } else {
+      await AsyncStorage.removeItem(AI_DATA_CONSENT_KEY);
+    }
+  }, []);
 
   const setUserEmail = useCallback(async (email: string | null) => {
     setUserEmailState(email);
@@ -93,12 +110,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const loadStoredData = useCallback(async () => {
     try {
-      const [storedLang, storedOnboarding, storedProfile, storedUserId, storedEmail] = await Promise.all([
+      const [storedLang, storedOnboarding, storedProfile, storedUserId, storedEmail, storedAiConsent] =
+        await Promise.all([
         AsyncStorage.getItem(LANGUAGE_KEY),
         AsyncStorage.getItem(ONBOARDING_KEY),
         AsyncStorage.getItem(ONBOARDING_PROFILE_KEY),
         AsyncStorage.getItem(USER_ID_KEY),
         AsyncStorage.getItem(USER_EMAIL_KEY),
+        AsyncStorage.getItem(AI_DATA_CONSENT_KEY),
       ]);
       if (storedLang && ['es', 'fr', 'it', 'en'].includes(storedLang)) {
         setLanguageState(storedLang as Language);
@@ -116,6 +135,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       setUserState(storedUserId);
       setUserEmailState(storedEmail);
+      setHasAiDataConsentState(storedAiConsent === AI_DATA_CONSENT_VERSION);
     } catch {
       // ignore
     } finally {
@@ -139,6 +159,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         userChecked,
         userEmail,
         setUserEmail,
+        hasAiDataConsent,
+        setAiDataConsent,
       }}
     >
       {children}

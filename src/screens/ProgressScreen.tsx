@@ -128,7 +128,7 @@ export default function ProgressScreen() {
             <Text style={styles.title}>Progress</Text>
             <Text style={styles.subtitle}>Track your learning</Text>
           </View>
-          <LanguageSelector />
+          <LanguageSelector tone="light" />
         </View>
         <View style={styles.statsChipsRow}>
           <View style={styles.statChip}>

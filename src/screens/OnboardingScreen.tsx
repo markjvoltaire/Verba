@@ -11,9 +11,9 @@ import {
   Animated,
   Dimensions,
   ActivityIndicator,
-  Alert,
   SafeAreaView,
   Image,
+  Linking,
 } from "react-native";
 import Purchases from "react-native-purchases";
 import RevenueCatUI from "react-native-purchases-ui";
@@ -36,6 +36,9 @@ import OnboardingPronunciationStep from "../components/OnboardingPronunciationSt
 import { getLearningPlan } from "../lib/learningPlan";
 import { syncUserToBackend, updatePlanToPro } from "../api/users";
 import { useUserId } from "../context/UserContext";
+
+/** Privacy policy (keep in sync with App Store Connect). */
+const PRIVACY_POLICY_URL = "https://verbatalk.carrd.co/";
 
 const LEVEL_TO_DIFFICULTY: Record<LanguageLevel, string> = {
   beginner: "easy",
@@ -87,17 +90,19 @@ const LANGUAGE_LABELS: Record<Language, string> = {
   en: "English",
 };
 
-const TOTAL_STEPS = 16;
+const TOTAL_STEPS = 17;
 const WELCOME_STEP = 1;
 const LANGUAGE_FADE_STEP = 3;
 const NATIVE_LANGUAGE_STEP = 5;
-const PRONUNCIATION_PREP_STEP = 6;
-const PRONUNCIATION_STEP = 7;
-const SPEAKING_INSIGHT_STEP = 8;
-const PLAN_DISPLAY_STEP = 12;
-const NOTIFICATION_STEP = 13;
-const PRE_PAYWALL_STEP = 14;
-const PAYWALL_STEP = 15;
+/** Third-party AI data disclosure + explicit consent (before any AI-backed practice). */
+const AI_CONSENT_STEP = 6;
+const PRONUNCIATION_PREP_STEP = 7;
+const PRONUNCIATION_STEP = 8;
+const SPEAKING_INSIGHT_STEP = 9;
+const PLAN_DISPLAY_STEP = 13;
+const NOTIFICATION_STEP = 14;
+const PRE_PAYWALL_STEP = 15;
+const PAYWALL_STEP = 16;
 const WELCOME_DURATION_MS = 2700;
 const FADE_SCREEN_DURATION_MS = 3500;
 
@@ -109,8 +114,12 @@ const LANGUAGE_FADE_TEXTS: Record<Language, string> = {
 };
 
 export default function OnboardingScreen({ navigation }: { navigation: any }) {
-  const { setLanguage, setHasCompletedOnboarding, setOnboardingProfile } =
-    useApp();
+  const {
+    setLanguage,
+    setHasCompletedOnboarding,
+    setOnboardingProfile,
+    setAiDataConsent,
+  } = useApp();
   const { userId: revenueCatUserId } = useUserId();
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
@@ -190,6 +199,13 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
   const prePayBadgeScale = useRef(new Animated.Value(0.8)).current;
   const prePayBtnOpacity = useRef(new Animated.Value(0)).current;
   const prePayBtnTranslateY = useRef(new Animated.Value(20)).current;
+  const aiConsentEmojiScale = useRef(new Animated.Value(0)).current;
+  const aiConsentTitleOpacity = useRef(new Animated.Value(0)).current;
+  const aiConsentTitleTranslateY = useRef(new Animated.Value(20)).current;
+  const aiConsentDetailsOpacity = useRef(new Animated.Value(0)).current;
+  const aiConsentDetailsTranslateY = useRef(new Animated.Value(16)).current;
+  const aiConsentFooterOpacity = useRef(new Animated.Value(0)).current;
+  const aiConsentFooterTranslateY = useRef(new Animated.Value(20)).current;
 
   const canProceed = () => {
     switch (step) {
@@ -205,17 +221,19 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
         return languageLevel !== null;
       case NATIVE_LANGUAGE_STEP:
         return nativeLanguage !== null;
+      case AI_CONSENT_STEP:
+        return true;
       case PRONUNCIATION_PREP_STEP:
         return true;
       case PRONUNCIATION_STEP:
         return true;
       case SPEAKING_INSIGHT_STEP:
         return true;
-      case 9:
-        return motivation.trim().length > 0;
       case 10:
-        return ageRange !== null;
+        return motivation.trim().length > 0;
       case 11:
+        return ageRange !== null;
+      case 12:
         return learningSpeed !== null;
       case PLAN_DISPLAY_STEP:
         return true;
@@ -237,7 +255,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       setStep(2);
     } else if (step === PLAN_DISPLAY_STEP) {
       prevStepRef.current = step;
-      setStep(11);
+      setStep(12);
     } else if (step === NOTIFICATION_STEP) {
       prevStepRef.current = step;
       setStep(PLAN_DISPLAY_STEP);
@@ -357,6 +375,10 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       prevStepRef.current = step;
       setPaywallLoading(true);
       setStep(PAYWALL_STEP);
+    } else if (step === AI_CONSENT_STEP) {
+      await setAiDataConsent(true);
+      prevStepRef.current = step;
+      setStep(PRONUNCIATION_PREP_STEP);
     } else if (step < TOTAL_STEPS - 1) {
       prevStepRef.current = step;
       setStep(step + 1);
@@ -369,6 +391,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       step === PLAN_DISPLAY_STEP ||
       step === WELCOME_STEP ||
       step === LANGUAGE_FADE_STEP ||
+      step === AI_CONSENT_STEP ||
       step === PRONUNCIATION_PREP_STEP ||
       step === SPEAKING_INSIGHT_STEP ||
       step === NOTIFICATION_STEP ||
@@ -530,6 +553,62 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
         Animated.timing(prepBtnTranslateY, {
           toValue: 0,
           duration: 300,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+  }, [step]);
+
+  useEffect(() => {
+    if (step !== AI_CONSENT_STEP) return;
+    aiConsentEmojiScale.setValue(0);
+    aiConsentTitleOpacity.setValue(0);
+    aiConsentTitleTranslateY.setValue(20);
+    aiConsentDetailsOpacity.setValue(0);
+    aiConsentDetailsTranslateY.setValue(16);
+    aiConsentFooterOpacity.setValue(0);
+    aiConsentFooterTranslateY.setValue(20);
+
+    Animated.sequence([
+      Animated.spring(aiConsentEmojiScale, {
+        toValue: 1,
+        friction: 4,
+        tension: 78,
+        useNativeDriver: true,
+      }),
+      Animated.parallel([
+        Animated.timing(aiConsentTitleOpacity, {
+          toValue: 1,
+          duration: 420,
+          useNativeDriver: true,
+        }),
+        Animated.timing(aiConsentTitleTranslateY, {
+          toValue: 0,
+          duration: 420,
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.parallel([
+        Animated.timing(aiConsentDetailsOpacity, {
+          toValue: 1,
+          duration: 380,
+          useNativeDriver: true,
+        }),
+        Animated.timing(aiConsentDetailsTranslateY, {
+          toValue: 0,
+          duration: 380,
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.parallel([
+        Animated.timing(aiConsentFooterOpacity, {
+          toValue: 1,
+          duration: 320,
+          useNativeDriver: true,
+        }),
+        Animated.timing(aiConsentFooterTranslateY, {
+          toValue: 0,
+          duration: 320,
           useNativeDriver: true,
         }),
       ]),
@@ -951,7 +1030,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
             ))}
           </>
         );
-      case 9:
+      case 10:
         return (
           <>
             <Text style={styles.title}>
@@ -983,7 +1062,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
             ))}
           </>
         );
-      case 10:
+      case 11:
         return (
           <>
             <Text style={styles.title}>What is your age?</Text>
@@ -1009,7 +1088,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
             ))}
           </>
         );
-      case 11:
+      case 12:
         return (
           <>
             <Text style={styles.title}>
@@ -1139,6 +1218,109 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       >
         {renderStep()}
       </TouchableOpacity>
+    );
+  }
+
+  if (step === AI_CONSENT_STEP) {
+    const langName = learningLanguage
+      ? LANGUAGE_LABELS[learningLanguage]
+      : "your new language";
+    return (
+      <View style={styles.aiConsentScreen}>
+        <SafeAreaView style={styles.prepSafeArea}>
+          <TouchableOpacity
+            style={styles.prepBackBtn}
+            onPress={handleBack}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.prepBackBtnText}>← Back</Text>
+          </TouchableOpacity>
+          <ScrollView
+            contentContainerStyle={styles.aiConsentScroll}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Animated.Text
+              style={[
+                styles.aiConsentEmoji,
+                {
+                  transform: [{ scale: aiConsentEmojiScale }],
+                },
+              ]}
+              accessibilityRole="text"
+            >
+              ✨
+            </Animated.Text>
+            <Animated.Text
+              style={[
+                styles.aiConsentTitle,
+                {
+                  opacity: aiConsentTitleOpacity,
+                  transform: [{ translateY: aiConsentTitleTranslateY }],
+                },
+              ]}
+            >
+              Smarter practice with AI
+            </Animated.Text>
+            <Animated.View
+              style={{
+                opacity: aiConsentDetailsOpacity,
+                transform: [{ translateY: aiConsentDetailsTranslateY }],
+                alignSelf: "stretch",
+                alignItems: "center",
+              }}
+            >
+              <Text style={styles.aiConsentLead}>
+                To give you pronunciation feedback, translations, and tailored
+                practice, Verba sends some of what you type or say to our servers,
+                which use AI services (for example OpenAI) to process it.
+              </Text>
+              <Text style={styles.aiConsentBody}>
+                That may include phrases you practice, your target language, and
+                short audio or text you submit during exercises. It is used only
+                to run the app’s features—not sold to advertisers.
+              </Text>
+              <Text style={styles.aiConsentBody}>
+                By continuing, you agree to this processing so we can power{" "}
+                {langName} practice for you.
+              </Text>
+              <TouchableOpacity
+                onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
+                activeOpacity={0.7}
+                style={styles.aiConsentPrivacyLinkWrap}
+              >
+                <Text style={styles.aiConsentPrivacyLink}>
+                  Read our Privacy Policy
+                </Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </ScrollView>
+          <Animated.View
+            style={[
+              styles.aiConsentFooter,
+              {
+                opacity: aiConsentFooterOpacity,
+                transform: [{ translateY: aiConsentFooterTranslateY }],
+              },
+            ]}
+          >
+            <TouchableOpacity
+              style={styles.aiConsentPrimaryBtn}
+              activeOpacity={0.85}
+              onPress={async () => {
+                await setAiDataConsent(true);
+                prevStepRef.current = AI_CONSENT_STEP;
+                setStep(PRONUNCIATION_PREP_STEP);
+              }}
+            >
+              <Text style={styles.aiConsentPrimaryBtnText}>
+                Continue with AI-powered practice
+              </Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </SafeAreaView>
+      </View>
     );
   }
 
@@ -2021,5 +2203,85 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#FFFFFF",
     letterSpacing: 0.3,
+  },
+  aiConsentScreen: {
+    flex: 1,
+    backgroundColor: "#00877B",
+  },
+  aiConsentScroll: {
+    flexGrow: 1,
+    paddingHorizontal: 28,
+    paddingTop: 8,
+    paddingBottom: 24,
+    alignItems: "center",
+  },
+  aiConsentEmoji: {
+    fontSize: 56,
+    marginBottom: 20,
+  },
+  aiConsentTitle: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    textAlign: "center",
+    fontFamily: "Georgia",
+    lineHeight: 36,
+    marginBottom: 20,
+  },
+  aiConsentLead: {
+    fontSize: 17,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.95)",
+    textAlign: "center",
+    lineHeight: 26,
+    marginBottom: 16,
+  },
+  aiConsentBody: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "rgba(255,255,255,0.88)",
+    textAlign: "center",
+    lineHeight: 24,
+    marginBottom: 14,
+    alignSelf: "stretch",
+  },
+  aiConsentPrivacyLinkWrap: {
+    marginTop: 8,
+    marginBottom: 8,
+    paddingVertical: 8,
+  },
+  aiConsentPrivacyLink: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#B2F5EA",
+    textDecorationLine: "underline",
+    textAlign: "center",
+  },
+  aiConsentFooter: {
+    paddingHorizontal: 24,
+    paddingBottom: 28,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(255,255,255,0.2)",
+    backgroundColor: "#00877B",
+  },
+  aiConsentPrimaryBtn: {
+    backgroundColor: "#FFFFFF",
+    paddingVertical: 18,
+    paddingHorizontal: 24,
+    borderRadius: 32,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  aiConsentPrimaryBtnText: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#00877B",
+    textAlign: "center",
+    letterSpacing: 0.2,
   },
 });

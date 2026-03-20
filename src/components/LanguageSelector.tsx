@@ -20,9 +20,14 @@ const LANGUAGES: { code: Language; label: string; flag: string }[] = [
 
 interface LanguageSelectorProps {
   variant?: 'compact' | 'full';
+  /** Use on colored headers (e.g. Progress) — white label + chevron */
+  tone?: 'default' | 'light';
 }
 
-export function LanguageSelector({ variant = 'compact' }: LanguageSelectorProps) {
+export function LanguageSelector({
+  variant = 'compact',
+  tone = 'default',
+}: LanguageSelectorProps) {
   const { language, setLanguage } = useApp();
   const [modalVisible, setModalVisible] = useState(false);
 
@@ -41,8 +46,19 @@ export function LanguageSelector({ variant = 'compact' }: LanguageSelectorProps)
         activeOpacity={0.7}
       >
         <Text style={styles.flagEmoji}>{current.flag}</Text>
-        <Text style={styles.selectorText}>{current.label}</Text>
-        <Text style={styles.chevron}>▼</Text>
+        <Text
+          style={[
+            styles.selectorText,
+            tone === 'light' && styles.selectorTextLight,
+          ]}
+        >
+          {current.label}
+        </Text>
+        <Text
+          style={[styles.chevron, tone === 'light' && styles.chevronLight]}
+        >
+          ▼
+        </Text>
       </TouchableOpacity>
 
       <Modal
@@ -101,6 +117,12 @@ const styles = StyleSheet.create({
   chevron: {
     fontSize: 10,
     color: '#78716C',
+  },
+  selectorTextLight: {
+    color: '#FFFFFF',
+  },
+  chevronLight: {
+    color: 'rgba(255,255,255,0.9)',
   },
   modalOverlay: {
     flex: 1,

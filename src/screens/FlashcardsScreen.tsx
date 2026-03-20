@@ -429,9 +429,7 @@ export default function FlashcardsScreen() {
           <Text style={styles.topBarCounterOnBlue}>
             {currentIndex + 1} / {flashcards.length}
           </Text>
-          <View style={styles.topBarBtn}>
-            <Ionicons name="settings-outline" size={22} color="rgba(255,255,255,0.85)" />
-          </View>
+          <View style={styles.topBarSpacer} />
         </View>
         <View style={styles.progressTrackOnBlue}>
           <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
@@ -555,6 +553,11 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
+  },
+  /** Balances close button so counter stays centered */
+  topBarSpacer: {
+    width: 40,
+    height: 40,
   },
   topBarCounterOnBlue: {
     fontSize: 16,
