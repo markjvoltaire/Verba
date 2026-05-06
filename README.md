@@ -44,3 +44,5 @@ For production, run the SQL in `VerbaBackend/supabase/schema.sql` and `seed.sql`
 - **Daily Goal:** Practice 5 phrases per day
 - **Streaks:** Consecutive day tracking
 - **Freemium:** 3 minutes free speaking per day; upgrade prompt for Pro
+
+!
