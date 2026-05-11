@@ -2,7 +2,7 @@
   "expo": {
     "name": "Verba",
     "slug": "Verba",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -14,7 +14,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.markjvoltaire.Verba",
-      "buildNumber": "10",
+      "buildNumber": "11",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSMicrophoneUsageDescription": "Verba uses the microphone while you practice speaking in language lessons. For example, when you press and hold the speak button, we record your voice so the app can analyze your pronunciation against the phrase you are learning and show you feedback and a score.",
