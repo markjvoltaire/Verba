@@ -1,33 +1,139 @@
-import React, { useMemo, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Pressable, Alert, ActivityIndicator, Linking, Platform } from 'react-native';
-import { Calendar } from 'react-native-calendars';
-import { useFocusEffect } from '@react-navigation/native';
-import Purchases from 'react-native-purchases';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useApp, type Language, type LanguageLevel } from '../context/AppContext';
-import { LanguageSelector } from '../components/LanguageSelector';
-import { useStreak } from '../context/StreakContext';
-import { useUsage } from '../context/UsageContext';
-import { useUserId } from '../context/UserContext';
-import { getProgressFromBackend, type ProgressData } from '../api/progress';
+import React, { useMemo, useState, useCallback } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Pressable,
+  Modal,
+  Alert,
+  ActivityIndicator,
+  Linking,
+  Platform,
+} from "react-native";
+import { Calendar } from "react-native-calendars";
+import { useFocusEffect } from "@react-navigation/native";
+import Purchases from "react-native-purchases";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useApp, type Language, type LanguageLevel } from "../context/AppContext";
+import { LanguageSelector } from "../components/LanguageSelector";
+import { useStreak } from "../context/StreakContext";
+import { useUsage } from "../context/UsageContext";
+import { useUserId } from "../context/UserContext";
+import { getProgressFromBackend, type ProgressData } from "../api/progress";
+
+const COLORS = {
+  bg: "#FAFAFA",
+  surface: "#FFFFFF",
+  text: "#0A0A0A",
+  textMuted: "rgba(0, 0, 0, 0.48)",
+  textSubtle: "rgba(0, 0, 0, 0.32)",
+  border: "rgba(0, 0, 0, 0.08)",
+  borderStrong: "rgba(0, 0, 0, 0.14)",
+  cta: "#0B0B0B",
+  progress: "#0A0A0A",
+  progressTrack: "rgba(0, 0, 0, 0.06)",
+};
+
+const FONT =
+  Platform.OS === "ios" ? "Helvetica Neue" : "sans-serif-medium";
 
 const DIFFICULTY_LEVELS: { key: LanguageLevel; label: string; icon: string }[] = [
-  { key: 'beginner', label: 'Beginner', icon: '🌱' },
-  { key: 'intermediate', label: 'Intermediate', icon: '🔥' },
-  { key: 'advanced', label: 'Advanced', icon: '💎' },
+  { key: "beginner", label: "Beginner", icon: "🌱" },
+  { key: "intermediate", label: "Intermediate", icon: "🔥" },
+  { key: "advanced", label: "Advanced", icon: "💎" },
 ];
 
 const NATIVE_LANGUAGES: { code: Language; label: string; flag: string }[] = [
-  { code: 'es', label: 'Spanish', flag: '🇪🇸' },
-  { code: 'fr', label: 'French', flag: '🇫🇷' },
-  { code: 'it', label: 'Italian', flag: '🇮🇹' },
-  { code: 'en', label: 'English', flag: '🇬🇧' },
+  { code: "es", label: "Spanish", flag: "🇪🇸" },
+  { code: "fr", label: "French", flag: "🇫🇷" },
+  { code: "it", label: "Italian", flag: "🇮🇹" },
+  { code: "en", label: "English", flag: "🇬🇧" },
 ];
+
+function SettingRow({
+  label,
+  value,
+  icon,
+  onPress,
+}: {
+  label: string;
+  value: string;
+  icon?: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.settingRow, pressed && styles.settingRowPressed]}
+      onPress={onPress}
+    >
+      <Text style={styles.settingLabel}>{label}</Text>
+      <View style={styles.settingValue}>
+        {icon ? <Text style={styles.settingIcon}>{icon}</Text> : null}
+        <Text style={styles.settingText}>{value}</Text>
+        <Text style={styles.settingChevron}>▼</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function StatMetric({
+  label,
+  value,
+  subvalue,
+}: {
+  label: string;
+  value: string;
+  subvalue?: string;
+}) {
+  return (
+    <View style={styles.statMetric}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <View style={styles.statValueRow}>
+        <Text style={styles.statValue}>{value}</Text>
+        {subvalue ? <Text style={styles.statSubvalue}>{subvalue}</Text> : null}
+      </View>
+    </View>
+  );
+}
+
+function SelectionModal({
+  visible,
+  title,
+  subtitle,
+  onClose,
+  children,
+}: {
+  visible: boolean;
+  title: string;
+  subtitle: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable style={styles.modalSheet} onPress={(e) => e.stopPropagation()}>
+          <Text style={styles.modalTitle}>{title}</Text>
+          <Text style={styles.modalSubtitle}>{subtitle}</Text>
+          <View style={styles.modalOptions}>{children}</View>
+          <Pressable
+            style={({ pressed }) => [styles.modalDismiss, pressed && styles.modalDismissPressed]}
+            onPress={onClose}
+          >
+            <Text style={styles.modalDismissText}>Cancel</Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
 
 export default function ProgressScreen() {
   const insets = useSafeAreaInsets();
-  const { language, onboardingProfile, setNativeLanguage, setLanguageLevel } = useApp();
-  const { streak, todayPhraseCount, dailyGoal, practiceDates, clearStats: clearStreakStats } = useStreak();
+  const { onboardingProfile, setNativeLanguage, setLanguageLevel } = useApp();
+  const { streak, todayPhraseCount, dailyGoal, practiceDates, clearStats: clearStreakStats } =
+    useStreak();
   const { todayUsageSeconds, clearStats: clearUsageStats } = useUsage();
   const { userId: revenueCatUserId } = useUserId();
   const [backendProgress, setBackendProgress] = useState<ProgressData | null>(null);
@@ -56,7 +162,7 @@ export default function ProgressScreen() {
       return () => {
         cancelled = true;
       };
-    }, [rcUserId])
+    }, [rcUserId]),
   );
 
   const displayUsageSeconds = backendProgress?.todayUsageSeconds ?? todayUsageSeconds;
@@ -64,12 +170,18 @@ export default function ProgressScreen() {
   const displayStreak = backendProgress?.streak ?? streak;
   const displayPracticeDates = backendProgress?.practiceDates ?? practiceDates;
 
-  const nativeLang = onboardingProfile?.nativeLanguage ?? 'en';
-  const nativeLangLabel = NATIVE_LANGUAGES.find((l) => l.code === nativeLang)?.label ?? 'English';
-  const nativeLangFlag = NATIVE_LANGUAGES.find((l) => l.code === nativeLang)?.flag ?? '🇬🇧';
+  const nativeLang = onboardingProfile?.nativeLanguage ?? "en";
+  const nativeLangLabel =
+    NATIVE_LANGUAGES.find((l) => l.code === nativeLang)?.label ?? "English";
+  const nativeLangFlag =
+    NATIVE_LANGUAGES.find((l) => l.code === nativeLang)?.flag ?? "🇬🇧";
 
-  const currentLevel = onboardingProfile?.languageLevel ?? 'beginner';
-  const currentLevelInfo = DIFFICULTY_LEVELS.find((l) => l.key === currentLevel) ?? DIFFICULTY_LEVELS[0];
+  const currentLevel = onboardingProfile?.languageLevel ?? "beginner";
+  const currentLevelInfo =
+    DIFFICULTY_LEVELS.find((l) => l.key === currentLevel) ?? DIFFICULTY_LEVELS[0];
+
+  const goalProgress =
+    dailyGoal > 0 ? Math.min(displayPhraseCount / dailyGoal, 1) : 0;
 
   const handleSelectNativeLanguage = async (code: Language) => {
     await setNativeLanguage(code);
@@ -82,193 +194,186 @@ export default function ProgressScreen() {
   };
 
   const handleManageSubscription = () => {
-    if (Platform.OS === 'ios') {
-      Linking.openURL('https://apps.apple.com/account/subscriptions');
+    if (Platform.OS === "ios") {
+      Linking.openURL("https://apps.apple.com/account/subscriptions");
     }
   };
 
   const handleClearStats = () => {
     Alert.alert(
-      'Clear stats',
-      'This will reset your streak, daily goal progress, practice history, and speaking time. This cannot be undone.',
+      "Clear stats",
+      "This will reset your streak, daily goal progress, practice history, and speaking time. This cannot be undone.",
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Clear',
-          style: 'destructive',
+          text: "Clear",
+          style: "destructive",
           onPress: async () => {
             await Promise.all([clearStreakStats(), clearUsageStats()]);
           },
         },
-      ]
+      ],
     );
   };
 
   const markedDates = useMemo(() => {
     const marked: Record<string, { marked: boolean; dotColor?: string }> = {};
     displayPracticeDates.forEach((d) => {
-      marked[d] = { marked: true, dotColor: '#29B6F6' };
+      marked[d] = { marked: true, dotColor: COLORS.text };
     });
     return marked;
   }, [displayPracticeDates]);
 
-  const languageLabels: Record<string, string> = {
-    es: 'Spanish',
-    fr: 'French',
-    it: 'Italian',
-    en: 'English',
-  };
+  const speakingTime = `${Math.floor(displayUsageSeconds / 60)}:${String(
+    displayUsageSeconds % 60,
+  ).padStart(2, "0")}`;
 
   return (
     <View style={styles.screenContainer}>
-      {/* Blue header */}
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <View style={styles.headerTop}>
-          <View style={styles.headerTitles}>
-            <Text style={styles.title}>Progress</Text>
-            <Text style={styles.subtitle}>Track your learning</Text>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingTop: insets.top + 12,
+            paddingBottom: insets.bottom + 32,
+          },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <View style={styles.headerRow}>
+            <View style={styles.headerCopy}>
+              <Text style={styles.title}>Progress</Text>
+              <Text style={styles.subtitle}>Track your learning</Text>
+            </View>
+            <LanguageSelector variant="pill" />
           </View>
-          <LanguageSelector tone="light" />
-        </View>
-        <View style={styles.statsChipsRow}>
-          <View style={styles.statChip}>
-            <Text style={styles.statChipText}>🔥 {displayStreak} days</Text>
-          </View>
-          <View style={styles.statChip}>
-            <Text style={styles.statChipText}>{Math.floor(displayUsageSeconds / 60)} min today</Text>
-          </View>
-        </View>
-      </View>
 
-      <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <TouchableOpacity
-          style={styles.nativeLangRow}
-          onPress={() => setNativeLangModalVisible(true)}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.nativeLangLabel}>My language</Text>
-          <View style={styles.nativeLangValue}>
-            <Text style={styles.nativeLangFlag}>{nativeLangFlag}</Text>
-            <Text style={styles.nativeLangText}>{nativeLangLabel}</Text>
-            <Text style={styles.nativeLangChevron}>▼</Text>
+          <View style={styles.statsCard}>
+            <StatMetric label="Streak" value={String(displayStreak)} subvalue=" days" />
+            <View style={styles.statsDivider} />
+            <StatMetric
+              label="Speaking"
+              value={String(Math.floor(displayUsageSeconds / 60))}
+              subvalue=" min"
+            />
           </View>
-        </TouchableOpacity>
+        </View>
 
-        <Modal
+        <View style={styles.settingsGroup}>
+          <SettingRow
+            label="My language"
+            value={nativeLangLabel}
+            icon={nativeLangFlag}
+            onPress={() => setNativeLangModalVisible(true)}
+          />
+          <SettingRow
+            label="Difficulty"
+            value={currentLevelInfo.label}
+            icon={currentLevelInfo.icon}
+            onPress={() => setDifficultyModalVisible(true)}
+          />
+        </View>
+
+        <SelectionModal
           visible={nativeLangModalVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setNativeLangModalVisible(false)}
+          title="My language"
+          subtitle="Language used for instructions and feedback"
+          onClose={() => setNativeLangModalVisible(false)}
         >
-          <Pressable
-            style={styles.modalOverlay}
-            onPress={() => setNativeLangModalVisible(false)}
-          >
-            <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
-              <Text style={styles.modalTitle}>My language</Text>
-              <Text style={styles.modalSubtitle}>Language used for instructions and feedback</Text>
-              {NATIVE_LANGUAGES.map(({ code, label, flag }) => (
-                <TouchableOpacity
-                  key={code}
-                  style={[styles.modalOption, nativeLang === code && styles.modalOptionSelected]}
-                  onPress={() => handleSelectNativeLanguage(code)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.modalOptionFlag}>{flag}</Text>
-                  <Text style={styles.modalOptionLabel}>{label}</Text>
-                </TouchableOpacity>
-              ))}
-              <TouchableOpacity
-                style={styles.modalCancel}
-                onPress={() => setNativeLangModalVisible(false)}
+          {NATIVE_LANGUAGES.map(({ code, label, flag }) => (
+            <Pressable
+              key={code}
+              style={({ pressed }) => [
+                styles.modalOption,
+                nativeLang === code && styles.modalOptionSelected,
+                pressed && styles.modalOptionPressed,
+              ]}
+              onPress={() => handleSelectNativeLanguage(code)}
+            >
+              <Text style={styles.modalOptionFlag}>{flag}</Text>
+              <Text
+                style={[
+                  styles.modalOptionLabel,
+                  nativeLang === code && styles.modalOptionLabelSelected,
+                ]}
               >
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
+                {label}
+              </Text>
             </Pressable>
-          </Pressable>
-        </Modal>
+          ))}
+        </SelectionModal>
 
-        <TouchableOpacity
-          style={styles.nativeLangRow}
-          onPress={() => setDifficultyModalVisible(true)}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.nativeLangLabel}>Difficulty</Text>
-          <View style={styles.nativeLangValue}>
-            <Text style={styles.nativeLangFlag}>{currentLevelInfo.icon}</Text>
-            <Text style={styles.nativeLangText}>{currentLevelInfo.label}</Text>
-            <Text style={styles.nativeLangChevron}>▼</Text>
-          </View>
-        </TouchableOpacity>
-
-        <Modal
+        <SelectionModal
           visible={difficultyModalVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setDifficultyModalVisible(false)}
+          title="Difficulty"
+          subtitle="Changes which lessons appear on the Home tab"
+          onClose={() => setDifficultyModalVisible(false)}
         >
-          <Pressable
-            style={styles.modalOverlay}
-            onPress={() => setDifficultyModalVisible(false)}
-          >
-            <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
-              <Text style={styles.modalTitle}>Difficulty</Text>
-              <Text style={styles.modalSubtitle}>Changes which lessons appear on the Home tab</Text>
-              {DIFFICULTY_LEVELS.map(({ key, label, icon }) => (
-                <TouchableOpacity
-                  key={key}
-                  style={[styles.modalOption, currentLevel === key && styles.modalOptionSelected]}
-                  onPress={() => handleSelectDifficulty(key)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.modalOptionFlag}>{icon}</Text>
-                  <Text style={styles.modalOptionLabel}>{label}</Text>
-                </TouchableOpacity>
-              ))}
-              <TouchableOpacity
-                style={styles.modalCancel}
-                onPress={() => setDifficultyModalVisible(false)}
+          {DIFFICULTY_LEVELS.map(({ key, label, icon }) => (
+            <Pressable
+              key={key}
+              style={({ pressed }) => [
+                styles.modalOption,
+                currentLevel === key && styles.modalOptionSelected,
+                pressed && styles.modalOptionPressed,
+              ]}
+              onPress={() => handleSelectDifficulty(key)}
+            >
+              <Text style={styles.modalOptionFlag}>{icon}</Text>
+              <Text
+                style={[
+                  styles.modalOptionLabel,
+                  currentLevel === key && styles.modalOptionLabelSelected,
+                ]}
               >
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
+                {label}
+              </Text>
             </Pressable>
-          </Pressable>
-        </Modal>
+          ))}
+        </SelectionModal>
 
         {isLoadingProgress ? (
           <View style={styles.loadingSection}>
-            <ActivityIndicator size="large" color="#29B6F6" />
+            <ActivityIndicator size="small" color={COLORS.text} />
             <Text style={styles.loadingText}>Loading progress…</Text>
           </View>
         ) : (
           <>
-            <View style={styles.speakingCard}>
-              <Text style={styles.speakingCardTitle}>Speaking time today</Text>
-              <Text style={styles.speakingCardValue}>
-                {Math.floor(displayUsageSeconds / 60)}:{String(displayUsageSeconds % 60).padStart(2, '0')}
-              </Text>
-              <Text style={styles.speakingCardSubtext}>
-                Time spent speaking on the Speak tab
-              </Text>
+            <View style={styles.metricCard}>
+              <Text style={styles.metricLabel}>Speaking time today</Text>
+              <Text style={styles.metricValue}>{speakingTime}</Text>
+              <Text style={styles.metricHint}>Time spent speaking on the Home tab</Text>
             </View>
 
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Today's goal</Text>
-              <Text style={styles.goalText}>
-                Practice {dailyGoal} phrases today
-              </Text>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${Math.min(100, (displayPhraseCount / dailyGoal) * 100)}%` }]} />
+            <View style={styles.metricCard}>
+              <Text style={styles.metricLabel}>Today&apos;s goal</Text>
+              <Text style={styles.goalText}>Practice {dailyGoal} phrases today</Text>
+              <View style={styles.progressTrack}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      width: `${Math.max(goalProgress * 100, goalProgress > 0 ? 4 : 0)}%`,
+                    },
+                  ]}
+                />
               </View>
-              <Text style={styles.progressText}>{displayPhraseCount} / {dailyGoal}</Text>
+              <Text style={styles.progressText}>
+                {displayPhraseCount} / {dailyGoal}
+              </Text>
             </View>
 
-            {displayStreak > 0 && (
+            {displayStreak > 0 ? (
               <View style={styles.streakCard}>
                 <Text style={styles.streakEmoji}>🔥</Text>
-                <Text style={styles.streakText}>{displayStreak} Day Streak</Text>
+                <View style={styles.streakCopy}>
+                  <Text style={styles.streakValue}>{displayStreak} day streak</Text>
+                  <Text style={styles.streakHint}>Keep it going tomorrow</Text>
+                </View>
               </View>
-            )}
+            ) : null}
 
             <View style={styles.calendarCard}>
               <Text style={styles.calendarTitle}>Practice history</Text>
@@ -278,37 +383,44 @@ export default function ProgressScreen() {
                 markedDates={markedDates}
                 hideExtraDays
                 theme={{
-                  backgroundColor: 'transparent',
-                  calendarBackground: 'transparent',
-                  textSectionTitleColor: '#57534E',
-                  selectedDayBackgroundColor: '#29B6F6',
-                  selectedDayTextColor: '#fff',
-                  todayTextColor: '#29B6F6',
-                  dayTextColor: '#1C1917',
-                  textDisabledColor: '#A8A29E',
-                  arrowColor: '#29B6F6',
-                  monthTextColor: '#1C1917',
-                  textDayFontWeight: '500',
-                  textMonthFontWeight: '700',
+                  backgroundColor: "transparent",
+                  calendarBackground: "transparent",
+                  textSectionTitleColor: COLORS.textMuted,
+                  selectedDayBackgroundColor: COLORS.text,
+                  selectedDayTextColor: "#FFFFFF",
+                  todayTextColor: COLORS.text,
+                  dayTextColor: COLORS.text,
+                  textDisabledColor: COLORS.textSubtle,
+                  arrowColor: COLORS.text,
+                  monthTextColor: COLORS.text,
+                  textDayFontWeight: "400",
+                  textMonthFontWeight: "500",
+                  textDayHeaderFontFamily: FONT,
+                  textMonthFontFamily: FONT,
+                  textDayFontFamily: FONT,
                 }}
               />
             </View>
 
-            <TouchableOpacity
-              style={styles.manageSubButton}
+            <Pressable
+              style={({ pressed }) => [
+                styles.manageSubButton,
+                pressed && styles.manageSubButtonPressed,
+              ]}
               onPress={handleManageSubscription}
-              activeOpacity={0.7}
             >
-              <Text style={styles.manageSubButtonText}>Manage Subscription</Text>
-            </TouchableOpacity>
+              <Text style={styles.manageSubButtonText}>Manage subscription</Text>
+            </Pressable>
 
-            <TouchableOpacity
-              style={styles.clearStatsButton}
+            <Pressable
+              style={({ pressed }) => [
+                styles.clearStatsButton,
+                pressed && styles.clearStatsButtonPressed,
+              ]}
               onPress={handleClearStats}
-              activeOpacity={0.7}
             >
               <Text style={styles.clearStatsButtonText}>Clear stats</Text>
-            </TouchableOpacity>
+            </Pressable>
           </>
         )}
       </ScrollView>
@@ -319,307 +431,378 @@ export default function ProgressScreen() {
 const styles = StyleSheet.create({
   screenContainer: {
     flex: 1,
-    backgroundColor: '#F0F4F8',
-  },
-  header: {
-    backgroundColor: '#29B6F6',
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    shadowColor: '#29B6F6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 14,
-  },
-  headerTitles: {
-    flex: 1,
-  },
-  statsChipsRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  statChip: {
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-  },
-  statChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    backgroundColor: COLORS.bg,
   },
   container: {
     flex: 1,
-    backgroundColor: '#F0F4F8',
   },
   content: {
-    padding: 20,
-    paddingBottom: 40,
+    paddingHorizontal: 20,
+    gap: 16,
   },
-  loadingSection: {
-    paddingVertical: 48,
-    alignItems: 'center',
-    gap: 12,
+
+  header: {
+    gap: 20,
+    marginBottom: 4,
   },
-  loadingText: {
-    fontSize: 15,
-    color: '#57534E',
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 16,
+  },
+  headerCopy: {
+    flex: 1,
+    gap: 4,
   },
   title: {
-    fontFamily: 'Georgia',
-    fontSize: 30,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 4,
-    letterSpacing: -0.5,
+    fontFamily: FONT,
+    fontSize: 28,
+    fontWeight: "500",
+    color: COLORS.text,
+    letterSpacing: -0.8,
   },
   subtitle: {
+    fontFamily: FONT,
     fontSize: 15,
-    color: 'rgba(255,255,255,0.85)',
+    fontWeight: "400",
+    color: COLORS.textMuted,
+    letterSpacing: -0.15,
   },
-  nativeLangRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#FFFFFF',
+
+  statsCard: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    backgroundColor: COLORS.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+  },
+  statMetric: {
+    flex: 1,
+    gap: 8,
+  },
+  statLabel: {
+    fontFamily: FONT,
+    fontSize: 12,
+    fontWeight: "500",
+    color: COLORS.textMuted,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  statValueRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+  },
+  statValue: {
+    fontFamily: FONT,
+    fontSize: 28,
+    fontWeight: "400",
+    color: COLORS.text,
+    letterSpacing: -0.8,
+    lineHeight: 32,
+  },
+  statSubvalue: {
+    fontFamily: FONT,
+    fontSize: 18,
+    fontWeight: "400",
+    color: COLORS.textSubtle,
+    letterSpacing: -0.4,
+  },
+  statsDivider: {
+    width: 1,
+    backgroundColor: COLORS.border,
+    marginHorizontal: 20,
+  },
+
+  settingsGroup: {
+    gap: 10,
+  },
+  settingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: COLORS.surface,
     borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
   },
-  nativeLangLabel: {
+  settingRowPressed: {
+    opacity: 0.88,
+    backgroundColor: "#F7F7F7",
+  },
+  settingLabel: {
+    fontFamily: FONT,
     fontSize: 16,
-    fontWeight: '600',
-    color: '#1C1917',
+    fontWeight: "500",
+    color: COLORS.text,
+    letterSpacing: -0.16,
   },
-  nativeLangValue: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  settingValue: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
   },
-  nativeLangFlag: {
-    fontSize: 20,
+  settingIcon: {
+    fontSize: 18,
   },
-  nativeLangText: {
+  settingText: {
+    fontFamily: FONT,
+    fontSize: 15,
+    fontWeight: "500",
+    color: COLORS.textMuted,
+    letterSpacing: -0.15,
+  },
+  settingChevron: {
+    fontSize: 8,
+    color: COLORS.textSubtle,
+    marginLeft: 2,
+  },
+
+  loadingSection: {
+    paddingVertical: 48,
+    alignItems: "center",
+    gap: 10,
+  },
+  loadingText: {
+    fontFamily: FONT,
+    fontSize: 14,
+    color: COLORS.textMuted,
+  },
+
+  metricCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 20,
+    gap: 8,
+  },
+  metricLabel: {
+    fontFamily: FONT,
+    fontSize: 12,
+    fontWeight: "500",
+    color: COLORS.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  metricValue: {
+    fontFamily: FONT,
+    fontSize: 32,
+    fontWeight: "400",
+    color: COLORS.text,
+    letterSpacing: -0.9,
+    lineHeight: 36,
+  },
+  metricHint: {
+    fontFamily: FONT,
+    fontSize: 13,
+    color: COLORS.textMuted,
+    letterSpacing: -0.13,
+  },
+  goalText: {
+    fontFamily: FONT,
+    fontSize: 18,
+    fontWeight: "500",
+    color: COLORS.text,
+    letterSpacing: -0.36,
+  },
+  progressTrack: {
+    height: 3,
+    backgroundColor: COLORS.progressTrack,
+    borderRadius: 999,
+    overflow: "hidden",
+    marginTop: 4,
+  },
+  progressFill: {
+    height: 3,
+    backgroundColor: COLORS.progress,
+    borderRadius: 999,
+  },
+  progressText: {
+    fontFamily: FONT,
+    fontSize: 13,
+    color: COLORS.textMuted,
+    letterSpacing: -0.13,
+  },
+
+  streakCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    backgroundColor: COLORS.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 18,
+  },
+  streakEmoji: {
+    fontSize: 28,
+  },
+  streakCopy: {
+    gap: 2,
+  },
+  streakValue: {
+    fontFamily: FONT,
+    fontSize: 17,
+    fontWeight: "500",
+    color: COLORS.text,
+    letterSpacing: -0.34,
+  },
+  streakHint: {
+    fontFamily: FONT,
+    fontSize: 13,
+    color: COLORS.textMuted,
+    letterSpacing: -0.13,
+  },
+
+  calendarCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 20,
+  },
+  calendarTitle: {
+    fontFamily: FONT,
+    fontSize: 18,
+    fontWeight: "500",
+    color: COLORS.text,
+    letterSpacing: -0.36,
+    marginBottom: 4,
+  },
+  calendarSubtitle: {
+    fontFamily: FONT,
+    fontSize: 14,
+    color: COLORS.textMuted,
+    letterSpacing: -0.14,
+    marginBottom: 12,
+  },
+
+  manageSubButton: {
+    height: 44,
+    borderRadius: 999,
+    backgroundColor: COLORS.cta,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+  manageSubButtonPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.98 }],
+  },
+  manageSubButtonText: {
+    fontFamily: FONT,
     fontSize: 16,
-    fontWeight: '600',
-    color: '#1C1917',
+    fontWeight: "500",
+    color: "#FFFFFF",
+    letterSpacing: -0.16,
   },
-  nativeLangChevron: {
-    fontSize: 10,
-    color: '#78716C',
+  clearStatsButton: {
+    height: 44,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    alignItems: "center",
+    justifyContent: "center",
   },
+  clearStatsButtonPressed: {
+    opacity: 0.88,
+  },
+  clearStatsButtonText: {
+    fontFamily: FONT,
+    fontSize: 16,
+    fontWeight: "500",
+    color: COLORS.textMuted,
+    letterSpacing: -0.16,
+  },
+
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
+    backgroundColor: "rgba(0, 0, 0, 0.32)",
+    justifyContent: "flex-end",
   },
-  modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 24,
-    width: '100%',
-    maxWidth: 320,
+  modalSheet: {
+    backgroundColor: COLORS.bg,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 32,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   modalTitle: {
-    fontFamily: 'Georgia',
+    fontFamily: FONT,
     fontSize: 22,
-    fontWeight: '700',
-    color: '#1C1917',
-    marginBottom: 4,
-    textAlign: 'center',
+    fontWeight: "500",
+    color: COLORS.text,
+    letterSpacing: -0.44,
+    marginBottom: 6,
   },
   modalSubtitle: {
-    fontSize: 14,
-    color: '#57534E',
+    fontFamily: FONT,
+    fontSize: 15,
+    fontWeight: "400",
+    color: COLORS.textMuted,
+    lineHeight: 22,
+    letterSpacing: -0.15,
     marginBottom: 20,
-    textAlign: 'center',
+  },
+  modalOptions: {
+    gap: 8,
   },
   modalOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
     borderRadius: 14,
-    marginBottom: 8,
-    gap: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
   },
   modalOptionSelected: {
-    backgroundColor: 'rgba(41, 182, 246, 0.1)',
+    borderColor: COLORS.text,
+    backgroundColor: "#F0F0F0",
+  },
+  modalOptionPressed: {
+    opacity: 0.88,
   },
   modalOptionFlag: {
     fontSize: 24,
   },
   modalOptionLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1C1917',
+    fontFamily: FONT,
+    fontSize: 17,
+    fontWeight: "500",
+    color: COLORS.text,
+    letterSpacing: -0.2,
   },
-  modalCancel: {
+  modalOptionLabelSelected: {
+    fontWeight: "600",
+  },
+  modalDismiss: {
     marginTop: 16,
-    padding: 16,
-    alignItems: 'center',
+    height: 44,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  modalCancelText: {
+  modalDismissPressed: {
+    opacity: 0.7,
+  },
+  modalDismissText: {
+    fontFamily: FONT,
     fontSize: 16,
-    color: '#78716C',
-  },
-  speakingCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  speakingCardTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#78716C',
-    marginBottom: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  speakingCardValue: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1C1917',
-    marginBottom: 4,
-  },
-  speakingCardSubtext: {
-    fontSize: 13,
-    color: '#57534E',
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  cardTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#78716C',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  goalText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1C1917',
-    marginBottom: 12,
-  },
-  progressBar: {
-    height: 8,
-    backgroundColor: 'rgba(28, 25, 23, 0.1)',
-    borderRadius: 4,
-    overflow: 'hidden',
-    marginBottom: 8,
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#29B6F6',
-    borderRadius: 4,
-  },
-  progressText: {
-    fontSize: 14,
-    color: '#57534E',
-  },
-  streakCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(41, 182, 246, 0.12)',
-    borderRadius: 16,
-    padding: 18,
-    marginBottom: 24,
-    borderWidth: 2,
-    borderColor: 'rgba(41, 182, 246, 0.2)',
-  },
-  streakEmoji: {
-    fontSize: 24,
-    marginRight: 10,
-  },
-  streakText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#29B6F6',
-  },
-  calendarCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  calendarTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1C1917',
-    marginBottom: 4,
-  },
-  calendarSubtitle: {
-    fontSize: 14,
-    color: '#57534E',
-    marginBottom: 16,
-  },
-  manageSubButton: {
-    marginTop: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 16,
-    backgroundColor: '#29B6F6',
-    alignItems: 'center',
-    shadowColor: '#29B6F6',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  manageSubButtonText: {
-    fontSize: 15,
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  clearStatsButton: {
-    marginTop: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: 'rgba(28, 25, 23, 0.1)',
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-  },
-  clearStatsButtonText: {
-    fontSize: 15,
-    color: '#78716C',
-    fontWeight: '600',
+    fontWeight: "500",
+    color: COLORS.textMuted,
+    letterSpacing: -0.16,
   },
 });

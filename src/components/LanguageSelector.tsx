@@ -19,7 +19,7 @@ const LANGUAGES: { code: Language; label: string; flag: string }[] = [
 ];
 
 interface LanguageSelectorProps {
-  variant?: 'compact' | 'full';
+  variant?: 'compact' | 'full' | 'pill';
   /** Use on colored headers (e.g. Progress) — white label + chevron */
   tone?: 'default' | 'light';
 }
@@ -41,7 +41,10 @@ export function LanguageSelector({
   return (
     <>
       <TouchableOpacity
-        style={styles.selector}
+        style={[
+          styles.selector,
+          variant === 'pill' && styles.selectorPill,
+        ]}
         onPress={() => setModalVisible(true)}
         activeOpacity={0.7}
       >
@@ -49,13 +52,18 @@ export function LanguageSelector({
         <Text
           style={[
             styles.selectorText,
+            variant === 'pill' && styles.selectorTextPill,
             tone === 'light' && styles.selectorTextLight,
           ]}
         >
           {current.label}
         </Text>
         <Text
-          style={[styles.chevron, tone === 'light' && styles.chevronLight]}
+          style={[
+            styles.chevron,
+            variant === 'pill' && styles.chevronPill,
+            tone === 'light' && styles.chevronLight,
+          ]}
         >
           ▼
         </Text>
@@ -106,6 +114,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
+  selectorPill: {
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.08)',
+  },
   flagEmoji: {
     fontSize: 20,
   },
@@ -114,9 +131,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1C1917',
   },
+  selectorTextPill: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#0A0A0A',
+    letterSpacing: -0.14,
+  },
   chevron: {
     fontSize: 10,
     color: '#78716C',
+  },
+  chevronPill: {
+    fontSize: 8,
+    color: 'rgba(0, 0, 0, 0.32)',
   },
   selectorTextLight: {
     color: '#FFFFFF',

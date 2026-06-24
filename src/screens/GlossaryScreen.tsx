@@ -4,9 +4,10 @@ import {
   Text,
   StyleSheet,
   ActivityIndicator,
-  TouchableOpacity,
+  Pressable,
   ScrollView,
   Alert,
+  Platform,
 } from "react-native";
 import {
   useAudioPlayer,
@@ -17,17 +18,28 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getSpeechStreamUrl } from "../api/tts";
 import { getPhrases, Phrase } from "../api/phrases";
-import { useApp } from "../context/AppContext";
 import { useSavedPhrases } from "../context/SavedPhrasesContext";
 import { LanguageSelector } from "../components/LanguageSelector";
 
-const PRIMARY = "#29B6F6";
+const COLORS = {
+  bg: "#FAFAFA",
+  surface: "#FFFFFF",
+  text: "#0A0A0A",
+  textMuted: "rgba(0, 0, 0, 0.48)",
+  textSubtle: "rgba(0, 0, 0, 0.32)",
+  border: "rgba(0, 0, 0, 0.08)",
+  borderStrong: "rgba(0, 0, 0, 0.14)",
+};
+
+const FONT =
+  Platform.OS === "ios" ? "Helvetica Neue" : "sans-serif-medium";
 
 const TTS_LANG: Record<string, string> = {
   es: "es",
   fr: "fr",
   it: "it",
   en: "en",
+  pt: "pt",
 };
 
 type PhraseFilter = "all" | "es" | "fr" | "it" | "en";
@@ -40,11 +52,12 @@ const PHRASE_FILTERS: { value: PhraseFilter; label: string; flag: string }[] = [
   { value: "en", label: "English", flag: "🇬🇧" },
 ];
 
-const LANG_COLORS: Record<string, string> = {
-  es: "#EF4444",
-  fr: "#3B82F6",
-  it: "#22C55E",
-  en: "#8B5CF6",
+const LANG_STYLES: Record<string, { bg: string; text: string }> = {
+  es: { bg: "#FFF0ED", text: "#9A3412" },
+  fr: { bg: "#EEF4FF", text: "#1D4ED8" },
+  it: { bg: "#F0FFF4", text: "#166534" },
+  en: { bg: "#F5F0FF", text: "#6D28D9" },
+  pt: { bg: "#ECFDF5", text: "#047857" },
 };
 
 const LANG_LABELS: Record<string, string> = {
@@ -52,6 +65,7 @@ const LANG_LABELS: Record<string, string> = {
   fr: "FR",
   it: "IT",
   en: "EN",
+  pt: "PT",
 };
 
 const WAVEFORM_BAR_COUNT = 8;
@@ -68,9 +82,94 @@ function amplitudeFromSample(channels: { frames: number[] }[]): number {
   return Math.min(1, max);
 }
 
+function PhraseRow({
+  phrase,
+  saved,
+  isPlaying,
+  playingTTS,
+  waveformLevels,
+  onPlay,
+  onToggleSave,
+}: {
+  phrase: Phrase;
+  saved: boolean;
+  isPlaying: boolean;
+  playingTTS: boolean;
+  waveformLevels: number[];
+  onPlay: () => void;
+  onToggleSave: () => void;
+}) {
+  const langStyle =
+    LANG_STYLES[phrase.target_lang] ?? { bg: "#F5F5F4", text: COLORS.text };
+  const langLabel =
+    LANG_LABELS[phrase.target_lang] ?? phrase.target_lang.toUpperCase().slice(0, 2);
+
+  return (
+    <View style={styles.phraseRow}>
+      <View style={[styles.langBadge, { backgroundColor: langStyle.bg }]}>
+        <Text style={[styles.langBadgeText, { color: langStyle.text }]}>
+          {langLabel}
+        </Text>
+      </View>
+
+      <View style={styles.phraseBody}>
+        <Text style={styles.phraseText}>{phrase.phrase}</Text>
+        <Text style={styles.phraseTranslation}>{phrase.translation}</Text>
+      </View>
+
+      <View style={styles.phraseActions}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.actionBtn,
+            isPlaying && styles.actionBtnActive,
+            pressed && styles.actionBtnPressed,
+          ]}
+          onPress={onPlay}
+          disabled={playingTTS && !isPlaying}
+        >
+          {isPlaying ? (
+            <View style={styles.miniWaveform}>
+              {waveformLevels.slice(0, 4).map((level, i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.miniWaveBar,
+                    { height: 3 + level * 10 },
+                    isPlaying && styles.miniWaveBarActive,
+                  ]}
+                />
+              ))}
+            </View>
+          ) : (
+            <Ionicons
+              name="volume-medium-outline"
+              size={17}
+              color={COLORS.text}
+            />
+          )}
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.actionBtn,
+            saved && styles.actionBtnSaved,
+            pressed && styles.actionBtnPressed,
+          ]}
+          onPress={onToggleSave}
+        >
+          <Ionicons
+            name={saved ? "bookmark" : "bookmark-outline"}
+            size={17}
+            color={saved ? COLORS.text : COLORS.textMuted}
+          />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 export default function GlossaryScreen() {
   const insets = useSafeAreaInsets();
-  const { language } = useApp();
   const { addToFlashcards, removeFromFlashcards, isInFlashcards, getFlashcardForPhrase } =
     useSavedPhrases();
 
@@ -168,124 +267,93 @@ export default function GlossaryScreen() {
     }
   };
 
-  const renderPhraseItem = (phrase: Phrase) => {
-    const saved = isInFlashcards(phrase.id);
-    const langColor = LANG_COLORS[phrase.target_lang] ?? PRIMARY;
-    const langLabel = LANG_LABELS[phrase.target_lang] ?? phrase.target_lang.toUpperCase();
-    const isPlaying = playingPhraseId === phrase.id && playingTTS;
-
-    return (
-      <View style={styles.phraseCard}>
-        <View style={[styles.langBadge, { backgroundColor: langColor + "18" }]}>
-          <Text style={[styles.langBadgeText, { color: langColor }]}>{langLabel}</Text>
-        </View>
-        <View style={styles.phraseContent}>
-          <Text style={styles.phraseText}>{phrase.phrase}</Text>
-          <Text style={styles.phraseTranslation}>{phrase.translation}</Text>
-        </View>
-        <View style={styles.phraseActions}>
-          <TouchableOpacity
-            style={[styles.iconBtn, isPlaying && styles.iconBtnActive]}
-            onPress={() => handlePlayPhrase(phrase)}
-            disabled={playingTTS && !isPlaying}
-            activeOpacity={0.7}
-          >
-            {isPlaying ? (
-              <View style={styles.miniWaveform}>
-                {waveformLevels.slice(0, 4).map((level, i) => (
-                  <View key={i} style={[styles.miniWaveBar, { height: 3 + level * 10 }]} />
-                ))}
-              </View>
-            ) : (
-              <Ionicons name="volume-high-outline" size={18} color={PRIMARY} />
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.iconBtn, saved && styles.iconBtnSaved]}
-            onPress={() => handleFlashcardToggle(phrase)}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={saved ? "bookmark" : "bookmark-outline"}
-              size={18}
-              color={saved ? PRIMARY : "#9CA3AF"}
-            />
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  };
-
   return (
     <View style={styles.container}>
-      {/* ── HEADER ── */}
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <View style={styles.headerTop}>
-          <Text style={styles.headerTitle}>Vocabulary</Text>
-          <LanguageSelector />
-        </View>
-      </View>
-
-      {/* ── CONTENT ── */}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: insets.bottom + 24 },
+          {
+            paddingTop: insets.top + 12,
+            paddingBottom: insets.bottom + 24,
+          },
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Filter pills */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Vocabulary</Text>
+          <LanguageSelector variant="pill" />
+        </View>
+
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.pillsRow}
-          style={styles.pillsScroll}
+          contentContainerStyle={styles.filtersRow}
+          style={styles.filtersScroll}
         >
           {PHRASE_FILTERS.map(({ value, label, flag }) => {
             const isSelected = phraseFilter === value;
             return (
-              <TouchableOpacity
+              <Pressable
                 key={value}
-                style={[styles.pill, isSelected && styles.pillSelected]}
+                style={({ pressed }) => [
+                  styles.filterChip,
+                  isSelected && styles.filterChipSelected,
+                  pressed && styles.filterChipPressed,
+                ]}
                 onPress={() => setPhraseFilter(value)}
-                activeOpacity={0.8}
               >
-                <Text style={styles.pillFlag}>{flag}</Text>
-                <Text style={[styles.pillText, isSelected && styles.pillTextSelected]}>
+                <Text style={styles.filterFlag}>{flag}</Text>
+                <Text
+                  style={[
+                    styles.filterLabel,
+                    isSelected && styles.filterLabelSelected,
+                  ]}
+                >
                   {label}
                 </Text>
-              </TouchableOpacity>
+              </Pressable>
             );
           })}
         </ScrollView>
 
-        {/* Section label */}
-        <View style={styles.sectionRow}>
-          <Text style={styles.sectionLabel}>Top Phrases</Text>
-          {!phrasesLoading && (
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Top phrases</Text>
+          {!phrasesLoading ? (
             <Text style={styles.sectionCount}>{phrases.length} phrases</Text>
-          )}
+          ) : null}
         </View>
 
-        {/* Phrase list */}
         {phrasesLoading ? (
           <View style={styles.loaderWrap}>
-            <ActivityIndicator size="large" color={PRIMARY} />
+            <ActivityIndicator size="small" color={COLORS.text} />
             <Text style={styles.loaderText}>Loading phrases…</Text>
           </View>
         ) : phrases.length === 0 ? (
           <View style={styles.emptyWrap}>
             <Text style={styles.emptyIcon}>📚</Text>
             <Text style={styles.emptyText}>
-              {phraseFilter === "all" ? "No phrases yet" : "No phrases for this language"}
+              {phraseFilter === "all"
+                ? "No phrases yet"
+                : "No phrases for this language"}
             </Text>
           </View>
         ) : (
-          phrases.map((phrase) => (
-            <View key={phrase.id}>{renderPhraseItem(phrase)}</View>
-          ))
+          <View style={styles.phraseList}>
+            {phrases.map((phrase) => (
+              <PhraseRow
+                key={phrase.id}
+                phrase={phrase}
+                saved={isInFlashcards(phrase.id)}
+                isPlaying={playingPhraseId === phrase.id && playingTTS}
+                playingTTS={playingTTS}
+                waveformLevels={waveformLevels}
+                onPlay={() => handlePlayPhrase(phrase)}
+                onToggleSave={() => handleFlashcardToggle(phrase)}
+              />
+            ))}
+          </View>
         )}
       </ScrollView>
     </View>
@@ -295,160 +363,169 @@ export default function GlossaryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F0F4F8",
+    backgroundColor: COLORS.bg,
   },
-
-  // ── HEADER ──────────────────────────────────────────────────────────────────
-  header: {
-    backgroundColor: PRIMARY,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-  },
-  headerTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#FFFFFF",
-    letterSpacing: -0.3,
-  },
-
-  // ── SCROLL ───────────────────────────────────────────────────────────────────
   scroll: {
     flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 20,
+    gap: 20,
   },
 
-  // ── FILTER PILLS ─────────────────────────────────────────────────────────────
-  pillsScroll: {
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 16,
+  },
+  headerTitle: {
+    fontFamily: FONT,
+    fontSize: 28,
+    fontWeight: "500",
+    color: COLORS.text,
+    letterSpacing: -0.8,
+  },
+
+  filtersScroll: {
     marginHorizontal: -20,
-    marginBottom: 20,
     flexGrow: 0,
     flexShrink: 0,
   },
-  pillsRow: {
+  filtersRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     paddingHorizontal: 20,
-    paddingVertical: 4,
-    paddingRight: 40,
+    paddingRight: 36,
   },
-  pill: {
+  filterChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 6,
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: "#FFFFFF",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  pillSelected: {
-    backgroundColor: PRIMARY,
+  filterChipSelected: {
+    backgroundColor: COLORS.text,
+    borderColor: COLORS.text,
   },
-  pillFlag: {
+  filterChipPressed: {
+    opacity: 0.88,
+  },
+  filterFlag: {
     fontSize: 14,
   },
-  pillText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#6B7280",
+  filterLabel: {
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: "500",
+    color: COLORS.textMuted,
+    letterSpacing: -0.14,
   },
-  pillTextSelected: {
+  filterLabelSelected: {
     color: "#FFFFFF",
   },
 
-  // ── SECTION HEADER ────────────────────────────────────────────────────────────
-  sectionRow: {
+  sectionHeader: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "baseline",
     justifyContent: "space-between",
-    marginBottom: 12,
+    paddingHorizontal: 2,
   },
-  sectionLabel: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#111827",
+  sectionTitle: {
+    fontFamily: FONT,
+    fontSize: 18,
+    fontWeight: "500",
+    color: COLORS.text,
+    letterSpacing: -0.36,
   },
   sectionCount: {
+    fontFamily: FONT,
     fontSize: 13,
-    color: "#9CA3AF",
+    fontWeight: "400",
+    color: COLORS.textMuted,
+    letterSpacing: -0.13,
   },
 
-  // ── PHRASE CARDS ──────────────────────────────────────────────────────────────
-  phraseCard: {
+  phraseList: {
+    gap: 10,
+  },
+  phraseRow: {
     flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 18,
-    marginBottom: 12,
+    alignItems: "flex-start",
     gap: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 16,
   },
   langBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
   },
   langBadgeText: {
+    fontFamily: FONT,
     fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.3,
+    fontWeight: "700",
+    letterSpacing: 0.2,
   },
-  phraseContent: {
+  phraseBody: {
     flex: 1,
     gap: 4,
+    paddingTop: 1,
   },
   phraseText: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#111827",
-    lineHeight: 24,
+    fontFamily: FONT,
+    fontSize: 17,
+    fontWeight: "500",
+    color: COLORS.text,
+    lineHeight: 23,
+    letterSpacing: -0.34,
   },
   phraseTranslation: {
-    fontSize: 15,
-    color: "#6B7280",
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: "400",
+    color: COLORS.textMuted,
     lineHeight: 20,
+    letterSpacing: -0.14,
   },
   phraseActions: {
     flexDirection: "row",
     gap: 6,
     flexShrink: 0,
+    paddingTop: 2,
   },
-  iconBtn: {
+  actionBtn: {
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: "rgba(41, 182, 246, 0.08)",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.bg,
     alignItems: "center",
     justifyContent: "center",
   },
-  iconBtnActive: {
-    backgroundColor: "rgba(41, 182, 246, 0.15)",
+  actionBtnActive: {
+    backgroundColor: COLORS.text,
+    borderColor: COLORS.text,
   },
-  iconBtnSaved: {
-    backgroundColor: "rgba(41, 182, 246, 0.15)",
+  actionBtnSaved: {
+    backgroundColor: "#F0F0F0",
+    borderColor: COLORS.borderStrong,
+  },
+  actionBtnPressed: {
+    opacity: 0.85,
   },
   miniWaveform: {
     flexDirection: "row",
@@ -459,18 +536,23 @@ const styles = StyleSheet.create({
   miniWaveBar: {
     width: 3,
     borderRadius: 2,
-    backgroundColor: PRIMARY,
+    backgroundColor: COLORS.text,
     minHeight: 3,
     maxHeight: 14,
   },
+  miniWaveBarActive: {
+    backgroundColor: "#FFFFFF",
+  },
+
   loaderWrap: {
     paddingVertical: 48,
     alignItems: "center",
     gap: 10,
   },
   loaderText: {
+    fontFamily: FONT,
     fontSize: 14,
-    color: "#9CA3AF",
+    color: COLORS.textMuted,
   },
   emptyWrap: {
     paddingVertical: 56,
@@ -481,7 +563,8 @@ const styles = StyleSheet.create({
     fontSize: 36,
   },
   emptyText: {
+    fontFamily: FONT,
     fontSize: 15,
-    color: "#9CA3AF",
+    color: COLORS.textMuted,
   },
 });

@@ -3,14 +3,12 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Dimensions,
-  Modal,
   Pressable,
+  ScrollView,
+  Modal,
+  Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
 import Purchases from "react-native-purchases";
 import RevenueCatUI, { PAYWALL_RESULT } from "react-native-purchases-ui";
 import { useApp, type Language } from "../context/AppContext";
@@ -20,8 +18,6 @@ import { useUsage } from "../context/UsageContext";
 import { useUserId } from "../context/UserContext";
 import { getPlanFromBackend, updatePlanToPro } from "../api/users";
 import { getLessons, type Lesson } from "../api/phrases";
-
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 const LANGUAGES: { code: Language; label: string; flag: string }[] = [
   { code: "es", label: "Spanish", flag: "🇪🇸" },
@@ -35,14 +31,27 @@ type Difficulty = "beginner" | "intermediate" | "advanced";
 const DIFFICULTY_SECTIONS: {
   key: Difficulty;
   label: string;
-  color: string;
-  bgColor: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  tint: string;
 }[] = [
-  { key: "beginner", label: "Beginner", color: "#10B981", bgColor: "#ECFDF5", icon: "leaf-outline" },
-  { key: "intermediate", label: "Intermediate", color: "#F59E0B", bgColor: "#FFFBEB", icon: "flame-outline" },
-  { key: "advanced", label: "Advanced", color: "#EF4444", bgColor: "#FEF2F2", icon: "diamond-outline" },
+  { key: "beginner", label: "Beginner", tint: "#F0FFF4" },
+  { key: "intermediate", label: "Intermediate", tint: "#FFFBEB" },
+  { key: "advanced", label: "Advanced", tint: "#FEF2F2" },
 ];
+
+const COLORS = {
+  bg: "#FAFAFA",
+  surface: "#FFFFFF",
+  text: "#0A0A0A",
+  textMuted: "rgba(0, 0, 0, 0.48)",
+  textSubtle: "rgba(0, 0, 0, 0.32)",
+  border: "rgba(0, 0, 0, 0.08)",
+  borderStrong: "rgba(0, 0, 0, 0.14)",
+  progress: "#0A0A0A",
+  progressTrack: "rgba(0, 0, 0, 0.06)",
+};
+
+const FONT =
+  Platform.OS === "ios" ? "Helvetica Neue" : "sans-serif-medium";
 
 const FALLBACK_LESSONS: {
   id: string;
@@ -88,6 +97,102 @@ const DIFFICULTY_MAP: Record<Difficulty, DifficultyId> = {
   advanced: "hard",
 };
 
+function formatSpeakingTime(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function StatMetric({
+  label,
+  value,
+  subvalue,
+  progress,
+}: {
+  label: string;
+  value: string;
+  subvalue?: string;
+  progress?: number;
+}) {
+  return (
+    <View style={styles.statMetric}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <View style={styles.statValueRow}>
+        <Text style={styles.statValue}>{value}</Text>
+        {subvalue ? <Text style={styles.statSubvalue}>{subvalue}</Text> : null}
+      </View>
+      {progress !== undefined ? (
+        <View style={styles.statProgressTrack}>
+          <View
+            style={[
+              styles.statProgressFill,
+              { width: `${Math.max(progress * 100, progress > 0 ? 4 : 0)}%` },
+            ]}
+          />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function LessonRow({
+  icon,
+  tint,
+  label,
+  description,
+  completed,
+  total,
+  onPress,
+}: {
+  icon: string;
+  tint: string;
+  label: string;
+  description: string;
+  completed: number;
+  total: number;
+  onPress: () => void;
+}) {
+  const progress = total > 0 ? completed / total : 0;
+
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.lessonRow, pressed && styles.lessonRowPressed]}
+      onPress={onPress}
+    >
+      <View style={[styles.lessonIconWrap, { backgroundColor: tint }]}>
+        <Text style={styles.lessonIcon}>{icon}</Text>
+      </View>
+
+      <View style={styles.lessonBody}>
+        <View style={styles.lessonTitleRow}>
+          <Text style={styles.lessonLabel} numberOfLines={1}>
+            {label}
+          </Text>
+          <Text style={styles.lessonChevron}>→</Text>
+        </View>
+        <Text style={styles.lessonDescription} numberOfLines={2}>
+          {description}
+        </Text>
+        <View style={styles.lessonMetaRow}>
+          <View style={styles.lessonProgressTrack}>
+            <View
+              style={[
+                styles.lessonProgressFill,
+                {
+                  width: `${Math.max(progress * 100, progress > 0 ? 6 : 0)}%`,
+                },
+              ]}
+            />
+          </View>
+          <Text style={styles.lessonProgressText}>
+            {completed} / {total}
+          </Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
 export default function LessonSelectScreen({
   navigation,
 }: {
@@ -101,7 +206,7 @@ export default function LessonSelectScreen({
   const { todayUsageSeconds } = useUsage();
   const { getCompletedCount } = useLessonProgress();
   const [lessons, setLessons] = useState<typeof FALLBACK_LESSONS>(FALLBACK_LESSONS);
-  const userLevel: Difficulty = (onboardingProfile?.languageLevel as Difficulty) ?? 'beginner';
+  const userLevel: Difficulty = (onboardingProfile?.languageLevel as Difficulty) ?? "beginner";
 
   useEffect(() => {
     getLessons(language)
@@ -150,63 +255,96 @@ export default function LessonSelectScreen({
   };
 
   const filteredSections = DIFFICULTY_SECTIONS.filter(
-    (section) => section.key === userLevel
+    (section) => section.key === userLevel,
   );
 
   return (
     <View style={styles.container}>
-      {/* ── HEADER ── */}
-      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-        <View style={styles.headerTop}>
-          <View style={styles.userInfo}>
-            <TouchableOpacity
-              style={styles.avatarContainer}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 24 },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <View style={styles.headerRow}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.avatarButton,
+                pressed && styles.avatarButtonPressed,
+              ]}
               onPress={() => setLanguageModalVisible(true)}
-              activeOpacity={0.7}
             >
-              <Text style={styles.flagText}>{currentLang?.flag ?? "🌐"}</Text>
-            </TouchableOpacity>
-            <View>
-              <Text style={styles.greeting}>Welcome back,</Text>
+              <Text style={styles.avatarFlag}>{currentLang?.flag ?? "🌐"}</Text>
+            </Pressable>
+
+            <View style={styles.headerCopy}>
+              <Text style={styles.greeting}>Welcome back</Text>
               <Text style={styles.userName}>{name}</Text>
             </View>
+
+            {streak > 0 ? (
+              <View style={styles.streakPill}>
+                <Text style={styles.streakEmoji}>🔥</Text>
+                <Text style={styles.streakCount}>{streak}</Text>
+              </View>
+            ) : (
+              <View style={styles.headerSpacer} />
+            )}
           </View>
-          {streak > 0 && (
-            <View style={styles.streakBadge}>
-              <Text style={styles.streakEmoji}>🔥</Text>
-              <Text style={styles.streakCount}>{streak}</Text>
-            </View>
-          )}
+
+          <View style={styles.statsCard}>
+            <StatMetric
+              label="Speaking"
+              value={formatSpeakingTime(todayUsageSeconds)}
+            />
+            <View style={styles.statsDivider} />
+            <StatMetric
+              label="Phrases"
+              value={String(todayPhraseCount)}
+              subvalue={` / ${dailyGoal}`}
+              progress={goalProgress}
+            />
+          </View>
         </View>
 
-        {/* Stats cards */}
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <View style={styles.statIconRow}>
-              <Ionicons name="mic-outline" size={18} color="#6366F1" />
-              <Text style={styles.statLabel}>Speaking</Text>
-            </View>
-            <Text style={styles.statValue}>
-              {Math.floor(todayUsageSeconds / 60)}:{String(todayUsageSeconds % 60).padStart(2, "0")}
-            </Text>
-          </View>
-          <View style={styles.statCard}>
-            <View style={styles.statIconRow}>
-              <Ionicons name="checkmark-circle-outline" size={18} color="#10B981" />
-              <Text style={styles.statLabel}>Phrases</Text>
-            </View>
-            <Text style={styles.statValue}>
-              {todayPhraseCount}
-              <Text style={styles.statGoal}> / {dailyGoal}</Text>
-            </Text>
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: `${goalProgress * 100}%` }]} />
-            </View>
-          </View>
-        </View>
-      </View>
+        {filteredSections.map((section) => {
+          const sectionLessons = lessons.filter((l) => l.difficulty === section.key);
+          return (
+            <View key={section.key} style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionLabel}>{section.label}</Text>
+                <Text style={styles.sectionCount}>
+                  {sectionLessons.length}{" "}
+                  {sectionLessons.length === 1 ? "lesson" : "lessons"}
+                </Text>
+              </View>
 
-      {/* Language selector modal */}
+              <View style={styles.lessonList}>
+                {sectionLessons.map((lesson) => {
+                  const total = lesson.phraseCount ?? 0;
+                  const completed = getCompletedCount(lesson.scenario);
+                  return (
+                    <LessonRow
+                      key={lesson.id}
+                      icon={lesson.icon}
+                      tint={section.tint}
+                      label={lesson.label}
+                      description={lesson.description}
+                      completed={completed}
+                      total={total}
+                      onPress={() => handleLesson(lesson)}
+                    />
+                  );
+                })}
+              </View>
+            </View>
+          );
+        })}
+      </ScrollView>
+
       <Modal
         visible={languageModalVisible}
         transparent
@@ -217,84 +355,49 @@ export default function LessonSelectScreen({
           style={styles.modalOverlay}
           onPress={() => setLanguageModalVisible(false)}
         >
-          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>Select language</Text>
-            {LANGUAGES.map(({ code, label, flag }) => (
-              <TouchableOpacity
-                key={code}
-                style={[styles.langOption, language === code && styles.langOptionSelected]}
-                onPress={async () => {
-                  await setLanguage(code);
-                  setLanguageModalVisible(false);
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.langOptionFlag}>{flag}</Text>
-                <Text style={styles.langOptionLabel}>{label}</Text>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              style={styles.modalCancelButton}
+          <Pressable style={styles.modalSheet} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>Learning language</Text>
+            <Text style={styles.modalSubtitle}>
+              Switch the language you want to practice.
+            </Text>
+            <View style={styles.modalOptions}>
+              {LANGUAGES.map(({ code, label, flag }) => (
+                <Pressable
+                  key={code}
+                  style={({ pressed }) => [
+                    styles.langOption,
+                    language === code && styles.langOptionSelected,
+                    pressed && styles.langOptionPressed,
+                  ]}
+                  onPress={async () => {
+                    await setLanguage(code);
+                    setLanguageModalVisible(false);
+                  }}
+                >
+                  <Text style={styles.langOptionFlag}>{flag}</Text>
+                  <Text
+                    style={[
+                      styles.langOptionLabel,
+                      language === code && styles.langOptionLabelSelected,
+                    ]}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <Pressable
+              style={({ pressed }) => [
+                styles.modalDismiss,
+                pressed && styles.modalDismissPressed,
+              ]}
               onPress={() => setLanguageModalVisible(false)}
             >
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </TouchableOpacity>
+              <Text style={styles.modalDismissText}>Cancel</Text>
+            </Pressable>
           </Pressable>
         </Pressable>
       </Modal>
-
-      {/* ── LESSONS ── */}
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {filteredSections.map((section) => {
-          const sectionLessons = lessons.filter((l) => l.difficulty === section.key);
-          return (
-            <View key={section.key} style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <View style={[styles.sectionBadge, { backgroundColor: section.bgColor }]}>
-                  <Ionicons name={section.icon} size={14} color={section.color} />
-                </View>
-                <Text style={styles.sectionLabel}>{section.label}</Text>
-                <View style={styles.sectionLine} />
-                <Text style={styles.sectionCount}>
-                  {sectionLessons.length} {sectionLessons.length === 1 ? "lesson" : "lessons"}
-                </Text>
-              </View>
-
-              {sectionLessons.map((lesson, index) => {
-                const total = lesson.phraseCount ?? 0;
-                const completed = getCompletedCount(lesson.scenario);
-                return (
-                  <TouchableOpacity
-                    key={lesson.id}
-                    style={styles.lessonCard}
-                    onPress={() => handleLesson(lesson)}
-                    activeOpacity={0.6}
-                  >
-                    <View style={[styles.lessonIconContainer, { backgroundColor: section.bgColor }]}>
-                      <Text style={styles.lessonIcon}>{lesson.icon}</Text>
-                    </View>
-                    <View style={styles.lessonContent}>
-                      <Text style={styles.lessonLabel}>{lesson.label}</Text>
-                      <Text style={styles.lessonDescription}>{lesson.description}</Text>
-                      <Text style={styles.lessonPhraseCount}>
-                        {completed} / {total} phrases
-                      </Text>
-                    </View>
-                    <View style={styles.lessonArrow}>
-                      <Ionicons name="arrow-forward" size={16} color="#9CA3AF" />
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          );
-        })}
-        <View style={{ height: 20 }} />
-      </ScrollView>
     </View>
   );
 }
@@ -302,266 +405,332 @@ export default function LessonSelectScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: COLORS.bg,
   },
-
-  // ── HEADER ──
-  header: {
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
-  },
-  headerTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 20,
-  },
-  userInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  avatarContainer: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: "#F1F5F9",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "#E5E7EB",
-  },
-  flagText: {
-    fontSize: 22,
-  },
-  greeting: {
-    fontSize: 13,
-    color: "#6B7280",
-    fontWeight: "500",
-  },
-  userName: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#1E293B",
-    marginTop: 1,
-  },
-  streakBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(251,191,36,0.15)",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 4,
-  },
-  streakEmoji: {
-    fontSize: 16,
-  },
-  streakCount: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#FBBF24",
-  },
-
-  // ── LANGUAGE MODAL ──
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  modalContent: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 24,
-    width: "100%",
-    maxWidth: 320,
-  },
-  modalTitle: {
-    fontFamily: "Georgia",
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#1C1917",
-    marginBottom: 20,
-    textAlign: "center",
-  },
-  langOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 16,
-    borderRadius: 14,
-    marginBottom: 8,
-    gap: 12,
-  },
-  langOptionSelected: {
-    backgroundColor: "rgba(41, 182, 246, 0.1)",
-  },
-  langOptionFlag: {
-    fontSize: 24,
-  },
-  langOptionLabel: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1C1917",
-  },
-  modalCancelButton: {
-    marginTop: 16,
-    padding: 16,
-    alignItems: "center",
-  },
-  modalCancelText: {
-    fontSize: 16,
-    color: "#78716C",
-  },
-
-  // ── STATS ──
-  statsRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: "#F8FAFC",
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  statIconRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 8,
-  },
-  statLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#6B7280",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#1E293B",
-  },
-  statGoal: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#94A3B8",
-  },
-  progressBarBg: {
-    height: 4,
-    backgroundColor: "#E5E7EB",
-    borderRadius: 2,
-    marginTop: 10,
-    overflow: "hidden",
-  },
-  progressBarFill: {
-    height: 4,
-    backgroundColor: "#10B981",
-    borderRadius: 2,
-  },
-
-  // ── LESSONS ──
   scroll: {
     flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 40,
     gap: 28,
   },
+
+  header: {
+    gap: 20,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  avatarButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.borderStrong,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarButtonPressed: {
+    opacity: 0.85,
+  },
+  avatarFlag: {
+    fontSize: 24,
+  },
+  headerCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  greeting: {
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: "400",
+    color: COLORS.textMuted,
+    letterSpacing: -0.14,
+  },
+  userName: {
+    fontFamily: FONT,
+    fontSize: 24,
+    fontWeight: "500",
+    color: COLORS.text,
+    letterSpacing: -0.6,
+  },
+  headerSpacer: {
+    width: 48,
+  },
+  streakPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  streakEmoji: {
+    fontSize: 14,
+  },
+  streakCount: {
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.text,
+    letterSpacing: -0.14,
+  },
+
+  statsCard: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    backgroundColor: COLORS.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+  },
+  statMetric: {
+    flex: 1,
+    gap: 8,
+  },
+  statLabel: {
+    fontFamily: FONT,
+    fontSize: 12,
+    fontWeight: "500",
+    color: COLORS.textMuted,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  statValueRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+  },
+  statValue: {
+    fontFamily: FONT,
+    fontSize: 28,
+    fontWeight: "400",
+    color: COLORS.text,
+    letterSpacing: -0.8,
+    lineHeight: 32,
+  },
+  statSubvalue: {
+    fontFamily: FONT,
+    fontSize: 18,
+    fontWeight: "400",
+    color: COLORS.textSubtle,
+    letterSpacing: -0.4,
+  },
+  statProgressTrack: {
+    height: 3,
+    borderRadius: 999,
+    backgroundColor: COLORS.progressTrack,
+    overflow: "hidden",
+  },
+  statProgressFill: {
+    height: 3,
+    borderRadius: 999,
+    backgroundColor: COLORS.progress,
+  },
+  statsDivider: {
+    width: 1,
+    backgroundColor: COLORS.border,
+    marginHorizontal: 20,
+  },
+
   section: {
-    gap: 10,
+    gap: 12,
   },
   sectionHeader: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 4,
-  },
-  sectionBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    paddingHorizontal: 2,
   },
   sectionLabel: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#1E293B",
-  },
-  sectionLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "#E5E7EB",
-    marginHorizontal: 8,
+    fontFamily: FONT,
+    fontSize: 18,
+    fontWeight: "500",
+    color: COLORS.text,
+    letterSpacing: -0.36,
   },
   sectionCount: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "#9CA3AF",
+    fontFamily: FONT,
+    fontSize: 13,
+    fontWeight: "400",
+    color: COLORS.textMuted,
+    letterSpacing: -0.13,
   },
-  lessonCard: {
+  lessonList: {
+    gap: 10,
+  },
+  lessonRow: {
     flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    alignItems: "flex-start",
+    gap: 14,
+    backgroundColor: COLORS.surface,
     borderRadius: 16,
-    padding: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
     borderWidth: 1,
-    borderColor: "#F1F5F9",
+    borderColor: COLORS.border,
+    padding: 16,
   },
-  lessonIconContainer: {
-    width: 48,
-    height: 48,
+  lessonRowPressed: {
+    opacity: 0.88,
+    backgroundColor: "#F7F7F7",
+  },
+  lessonIconWrap: {
+    width: 46,
+    height: 46,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 14,
   },
   lessonIcon: {
     fontSize: 22,
   },
-  lessonContent: {
+  lessonBody: {
     flex: 1,
+    gap: 6,
+  },
+  lessonTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
   },
   lessonLabel: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#1E293B",
-    marginBottom: 3,
+    flex: 1,
+    fontFamily: FONT,
+    fontSize: 17,
+    fontWeight: "500",
+    color: COLORS.text,
+    letterSpacing: -0.34,
+  },
+  lessonChevron: {
+    fontFamily: FONT,
+    fontSize: 16,
+    fontWeight: "400",
+    color: COLORS.textSubtle,
   },
   lessonDescription: {
-    fontSize: 13,
-    color: "#94A3B8",
-    fontWeight: "500",
-    lineHeight: 18,
-    marginBottom: 4,
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: "400",
+    color: COLORS.textMuted,
+    lineHeight: 20,
+    letterSpacing: -0.14,
   },
-  lessonPhraseCount: {
+  lessonMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 2,
+  },
+  lessonProgressTrack: {
+    flex: 1,
+    height: 3,
+    borderRadius: 999,
+    backgroundColor: COLORS.progressTrack,
+    overflow: "hidden",
+  },
+  lessonProgressFill: {
+    height: 3,
+    borderRadius: 999,
+    backgroundColor: COLORS.progress,
+  },
+  lessonProgressText: {
+    fontFamily: FONT,
     fontSize: 12,
-    color: "#64748B",
+    fontWeight: "500",
+    color: COLORS.textMuted,
+    letterSpacing: -0.12,
+    minWidth: 44,
+    textAlign: "right",
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.32)",
+    justifyContent: "flex-end",
+  },
+  modalSheet: {
+    backgroundColor: COLORS.bg,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 32,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  modalTitle: {
+    fontFamily: FONT,
+    fontSize: 22,
+    fontWeight: "500",
+    color: COLORS.text,
+    letterSpacing: -0.44,
+    marginBottom: 6,
+  },
+  modalSubtitle: {
+    fontFamily: FONT,
+    fontSize: 15,
+    fontWeight: "400",
+    color: COLORS.textMuted,
+    lineHeight: 22,
+    letterSpacing: -0.15,
+    marginBottom: 20,
+  },
+  modalOptions: {
+    gap: 8,
+  },
+  langOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  langOptionSelected: {
+    borderColor: COLORS.text,
+    backgroundColor: "#F0F0F0",
+  },
+  langOptionPressed: {
+    opacity: 0.88,
+  },
+  langOptionFlag: {
+    fontSize: 24,
+  },
+  langOptionLabel: {
+    fontFamily: FONT,
+    fontSize: 17,
+    fontWeight: "500",
+    color: COLORS.text,
+    letterSpacing: -0.2,
+  },
+  langOptionLabelSelected: {
     fontWeight: "600",
   },
-  lessonArrow: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: "#F8FAFC",
+  modalDismiss: {
+    marginTop: 16,
+    height: 44,
+    borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    marginLeft: 8,
+  },
+  modalDismissPressed: {
+    opacity: 0.7,
+  },
+  modalDismissText: {
+    fontFamily: FONT,
+    fontSize: 16,
+    fontWeight: "500",
+    color: COLORS.textMuted,
+    letterSpacing: -0.16,
   },
 });

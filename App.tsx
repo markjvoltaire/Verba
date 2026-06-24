@@ -128,11 +128,11 @@ function RootNavigator() {
     return (
       <Animated.View
         style={[
-          { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#29B6F6' },
+          { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FAFAFA' },
           { opacity: fadeAnim },
         ]}
       >
-        <WaveLogo fill="#F8F9FA" animated size={160} />
+        <WaveLogo fill="#0A0A0A" animated size={160} />
       </Animated.View>
     );
   }
@@ -146,14 +146,14 @@ function RootNavigator() {
           style={[
             StyleSheet.absoluteFill,
             {
-              backgroundColor: '#29B6F6',
+              backgroundColor: '#FAFAFA',
               justifyContent: 'center',
               alignItems: 'center',
               opacity: splashOverlayOpacity,
             },
           ]}
         >
-          <WaveLogo fill="#F8F9FA" animated size={160} />
+          <WaveLogo fill="#0A0A0A" animated size={160} />
         </Animated.View>
       </View>
     );
@@ -167,14 +167,14 @@ function RootNavigator() {
         style={[
           StyleSheet.absoluteFill,
           {
-            backgroundColor: '#29B6F6',
+            backgroundColor: '#FAFAFA',
             justifyContent: 'center',
             alignItems: 'center',
             opacity: splashOverlayOpacity,
           },
         ]}
       >
-        <WaveLogo fill="#F8F9FA" animated size={160} />
+        <WaveLogo fill="#0A0A0A" animated size={160} />
       </Animated.View>
     </View>
   );

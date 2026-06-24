@@ -25,10 +25,10 @@ const Tab = createBottomTabNavigator();
 const SpeakStack = createNativeStackNavigator();
 const ProgressStack = createNativeStackNavigator();
 
-const ACTIVE_COLOR = '#29B6F6';
-const INACTIVE_COLOR = '#9CA3AF';
-const TAB_BAR_BG = '#FFFFFF';
-const ACTIVE_PILL_BG = 'rgba(41, 182, 246, 0.12)';
+const ACTIVE_COLOR = '#0A0A0A';
+const INACTIVE_COLOR = 'rgba(0, 0, 0, 0.38)';
+const TAB_BAR_BG = '#FAFAFA';
+const ACTIVE_PILL_BG = 'rgba(0, 0, 0, 0.06)';
 
 function CustomTabBar(props: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
@@ -206,9 +206,9 @@ export default function TabNavigator() {
 const styles = StyleSheet.create({
   tabBar: {
     backgroundColor: TAB_BAR_BG,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 0, 0, 0.08)',
+    paddingTop: 10,
     ...Platform.select({
       ios: {
         shadowColor: '#000',

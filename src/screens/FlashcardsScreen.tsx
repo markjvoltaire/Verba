@@ -3,12 +3,14 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
+  Pressable,
   Animated,
   PanResponder,
   Dimensions,
   ActivityIndicator,
   Alert,
+  Platform,
+  Easing,
 } from "react-native";
 import { useAudioPlayer, setAudioModeAsync } from "expo-audio";
 import { Ionicons } from "@expo/vector-icons";
@@ -19,19 +21,30 @@ import { useSavedPhrases } from "../context/SavedPhrasesContext";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const SWIPE_THRESHOLD = 120;
-const SWIPE_OUT_DURATION = 300;
-const FLIP_DURATION = 350;
+const SWIPE_OUT_DURATION = 340;
+const FLIP_DURATION = 420;
 
-const BG = "#F0F4F8";
-const CARD_BG = "#FFFFFF";
-const CARD_BORDER = "#E5E7EB";
-const TEXT_PRIMARY = "#1E293B";
-const TEXT_MUTED = "#64748B";
-const TEXT_HINT = "#94A3B8";
-const ACCENT = "#29B6F6";
-const ACCENT_SOFT = "rgba(41, 182, 246, 0.12)";
-const CORRECT_COLOR = "#22C55E";
-const WRONG_COLOR = "#EF4444";
+const COLORS = {
+  bg: "#FAFAFA",
+  surface: "#FFFFFF",
+  surfaceMuted: "#F5F5F4",
+  text: "#0A0A0A",
+  textMuted: "rgba(0, 0, 0, 0.48)",
+  textSubtle: "rgba(0, 0, 0, 0.32)",
+  border: "rgba(0, 0, 0, 0.08)",
+  borderStrong: "rgba(0, 0, 0, 0.14)",
+  cta: "#0B0B0B",
+  correct: "#15803D",
+  correctSoft: "rgba(21, 128, 61, 0.08)",
+  wrong: "#B91C1C",
+  wrongSoft: "rgba(185, 28, 28, 0.08)",
+};
+
+const FONT =
+  Platform.OS === "ios" ? "Helvetica Neue" : "sans-serif-medium";
+
+const MOTION_EASING = Easing.bezier(0.16, 1, 0.3, 1);
+const SWIPE_EASING = Easing.bezier(0.4, 0, 0.2, 1);
 
 const TTS_LANG: Record<string, string> = {
   es: "es",
@@ -73,6 +86,7 @@ function SwipeCard({
     Animated.timing(flipAnim, {
       toValue: isFlipped ? 1 : 0,
       duration: FLIP_DURATION,
+      easing: MOTION_EASING,
       useNativeDriver: true,
     }).start();
   }, [isFlipped, flipAnim]);
@@ -86,29 +100,29 @@ function SwipeCard({
     outputRange: ["180deg", "360deg"],
   });
   const frontOpacity = flipAnim.interpolate({
-    inputRange: [0, 0.45, 0.5, 1],
+    inputRange: [0, 0.48, 0.52, 1],
     outputRange: [1, 1, 0, 0],
   });
   const backOpacity = flipAnim.interpolate({
-    inputRange: [0, 0.45, 0.5, 1],
+    inputRange: [0, 0.48, 0.52, 1],
     outputRange: [0, 0, 1, 1],
   });
 
   const rotate = position.x.interpolate({
     inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
-    outputRange: ["-12deg", "0deg", "12deg"],
+    outputRange: ["-8deg", "0deg", "8deg"],
     extrapolate: "clamp",
   });
 
   const correctOverlayOpacity = position.x.interpolate({
     inputRange: [0, SWIPE_THRESHOLD],
-    outputRange: [0, 0.35],
+    outputRange: [0, 0.22],
     extrapolate: "clamp",
   });
 
   const wrongOverlayOpacity = position.x.interpolate({
     inputRange: [-SWIPE_THRESHOLD, 0],
-    outputRange: [0.35, 0],
+    outputRange: [0.22, 0],
     extrapolate: "clamp",
   });
 
@@ -125,31 +139,30 @@ function SwipeCard({
           Animated.timing(position, {
             toValue: { x: SCREEN_WIDTH + 100, y: 0 },
             duration: SWIPE_OUT_DURATION,
+            easing: SWIPE_EASING,
             useNativeDriver: true,
           }).start(() => onSwipeRight());
         } else if (gesture.dx < -SWIPE_THRESHOLD) {
           Animated.timing(position, {
             toValue: { x: -SCREEN_WIDTH - 100, y: 0 },
             duration: SWIPE_OUT_DURATION,
+            easing: SWIPE_EASING,
             useNativeDriver: true,
           }).start(() => onSwipeLeft());
         } else {
-          Animated.spring(position, {
+          Animated.timing(position, {
             toValue: { x: 0, y: 0 },
-            friction: 6,
-            tension: 80,
+            duration: 280,
+            easing: MOTION_EASING,
             useNativeDriver: true,
           }).start();
         }
       },
-    })
+    }),
   ).current;
 
   const cardTransform = {
-    transform: [
-      { translateX: position.x },
-      { rotate },
-    ],
+    transform: [{ translateX: position.x }, { rotate }],
   };
 
   return (
@@ -157,23 +170,24 @@ function SwipeCard({
       style={[styles.swipeCardOuter, cardTransform]}
       {...panResponder.panHandlers}
     >
-      {/* Correct overlay (green, right swipe) */}
       <Animated.View
-        style={[styles.swipeOverlay, styles.swipeOverlayCorrect, { opacity: correctOverlayOpacity }]}
+        style={[
+          styles.swipeOverlay,
+          styles.swipeOverlayCorrect,
+          { opacity: correctOverlayOpacity },
+        ]}
         pointerEvents="none"
       />
-      {/* Wrong overlay (red, left swipe) */}
       <Animated.View
-        style={[styles.swipeOverlay, styles.swipeOverlayWrong, { opacity: wrongOverlayOpacity }]}
+        style={[
+          styles.swipeOverlay,
+          styles.swipeOverlayWrong,
+          { opacity: wrongOverlayOpacity },
+        ]}
         pointerEvents="none"
       />
 
-      <TouchableOpacity
-        style={styles.cardTouchable}
-        onPress={onFlip}
-        activeOpacity={1}
-      >
-        {/* Back face */}
+      <Pressable style={styles.cardTouchable} onPress={onFlip}>
         <Animated.View
           style={[
             styles.flipFace,
@@ -185,31 +199,42 @@ function SwipeCard({
           ]}
         >
           <View style={styles.cardInnerTop}>
-            <TouchableOpacity
-              style={[styles.cardActionBtn, styles.cardActionBtnBack]}
-              onPress={(e) => { e.stopPropagation(); onPlay(); }}
+            <Pressable
+              style={({ pressed }) => [
+                styles.cardActionBtn,
+                pressed && styles.cardActionBtnPressed,
+              ]}
+              onPress={(e) => {
+                e.stopPropagation();
+                onPlay();
+              }}
               disabled={isPlayLoading}
             >
               {isPlayLoading ? (
-                <ActivityIndicator size="small" color={ACCENT} />
+                <ActivityIndicator size="small" color={COLORS.text} />
               ) : (
-                <Ionicons name="volume-high" size={22} color={ACCENT} />
+                <Ionicons name="volume-medium-outline" size={20} color={COLORS.text} />
               )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.cardActionBtn, styles.cardActionBtnBack]}
-              onPress={(e) => { e.stopPropagation(); onDelete(); }}
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.cardActionBtn,
+                pressed && styles.cardActionBtnPressed,
+              ]}
+              onPress={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
             >
-              <Ionicons name="trash-outline" size={22} color={WRONG_COLOR} />
-            </TouchableOpacity>
+              <Ionicons name="trash-outline" size={20} color={COLORS.wrong} />
+            </Pressable>
           </View>
           <View style={styles.cardTextArea}>
             <Text style={styles.cardTextBack}>{backText}</Text>
           </View>
-          <Text style={styles.flipHintBack}>tap to flip</Text>
+          <Text style={styles.flipHint}>tap to flip</Text>
         </Animated.View>
 
-        {/* Front face */}
         <Animated.View
           style={[
             styles.flipFace,
@@ -221,31 +246,74 @@ function SwipeCard({
           ]}
         >
           <View style={styles.cardInnerTop}>
-            <TouchableOpacity
-              style={styles.cardActionBtn}
-              onPress={(e) => { e.stopPropagation(); onPlay(); }}
+            <Pressable
+              style={({ pressed }) => [
+                styles.cardActionBtn,
+                pressed && styles.cardActionBtnPressed,
+              ]}
+              onPress={(e) => {
+                e.stopPropagation();
+                onPlay();
+              }}
               disabled={isPlayLoading}
             >
               {isPlayLoading ? (
-                <ActivityIndicator size="small" color={ACCENT} />
+                <ActivityIndicator size="small" color={COLORS.text} />
               ) : (
-                <Ionicons name="volume-high-outline" size={22} color={ACCENT} />
+                <Ionicons name="volume-medium-outline" size={20} color={COLORS.text} />
               )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.cardActionBtn}
-              onPress={(e) => { e.stopPropagation(); onDelete(); }}
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.cardActionBtn,
+                pressed && styles.cardActionBtnPressed,
+              ]}
+              onPress={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
             >
-              <Ionicons name="trash-outline" size={22} color={TEXT_MUTED} />
-            </TouchableOpacity>
+              <Ionicons name="trash-outline" size={20} color={COLORS.textMuted} />
+            </Pressable>
           </View>
           <View style={styles.cardTextArea}>
             <Text style={styles.cardText}>{frontText}</Text>
           </View>
           <Text style={styles.flipHint}>tap to flip</Text>
         </Animated.View>
-      </TouchableOpacity>
+      </Pressable>
     </Animated.View>
+  );
+}
+
+function ScreenHeader({
+  title,
+  subtitle,
+  paddingTop,
+  rightSlot,
+  progressPercent,
+}: {
+  title: string;
+  subtitle?: string;
+  paddingTop: number;
+  rightSlot?: React.ReactNode;
+  progressPercent?: number;
+}) {
+  return (
+    <View style={[styles.header, { paddingTop }]}>
+      <View style={styles.headerRow}>
+        <View style={styles.headerCopy}>
+          <Text style={styles.headerTitle}>{title}</Text>
+          {subtitle ? <Text style={styles.headerSubtitle}>{subtitle}</Text> : null}
+        </View>
+        {rightSlot}
+      </View>
+      {progressPercent !== undefined ? (
+        <View style={styles.progressTrack}>
+          <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -291,19 +359,22 @@ export default function FlashcardsScreen() {
 
   useEffect(() => {
     if (!player) return;
-    const sub = player.addListener("playbackStatusUpdate", (status: any) => {
+    const sub = player.addListener("playbackStatusUpdate", (status: { didJustFinish?: boolean }) => {
       if (status.didJustFinish) setPlayingId(null);
     });
     return () => sub.remove();
   }, [player]);
 
-  const advanceCard = useCallback((direction: "correct" | "wrong") => {
-    if (!currentCard) return;
-    setResults((prev) => ({ ...prev, [currentCard.id]: direction }));
-    setFlippedId(null);
-    setCurrentIndex((i) => i + 1);
-    setCardKey((k) => k + 1);
-  }, [currentCard]);
+  const advanceCard = useCallback(
+    (direction: "correct" | "wrong") => {
+      if (!currentCard) return;
+      setResults((prev) => ({ ...prev, [currentCard.id]: direction }));
+      setFlippedId(null);
+      setCurrentIndex((i) => i + 1);
+      setCardKey((k) => k + 1);
+    },
+    [currentCard],
+  );
 
   const confirmDeleteCard = useCallback(() => {
     if (!currentCard) return;
@@ -328,7 +399,7 @@ export default function FlashcardsScreen() {
             }
           },
         },
-      ]
+      ],
     );
   }, [currentCard, currentIndex, flashcards.length, removeFromFlashcards]);
 
@@ -349,11 +420,11 @@ export default function FlashcardsScreen() {
 
   const correctCount = useMemo(
     () => Object.values(results).filter((r) => r === "correct").length,
-    [results]
+    [results],
   );
   const wrongCount = useMemo(
     () => Object.values(results).filter((r) => r === "wrong").length,
-    [results]
+    [results],
   );
 
   const progressPercent =
@@ -364,10 +435,11 @@ export default function FlashcardsScreen() {
   if (allFlashcards.length === 0) {
     return (
       <View style={styles.container}>
-        <View style={[styles.blueHeader, { paddingTop: insets.top + 12 }]}>
-          <Text style={styles.emptyHeaderTitle}>Flashcards</Text>
-          <Text style={styles.emptyHeaderSubtitle}>Review saved phrases</Text>
-        </View>
+        <ScreenHeader
+          title="Flashcards"
+          subtitle="Review saved phrases"
+          paddingTop={insets.top + 12}
+        />
         <View style={styles.emptyState}>
           <View style={styles.emptyIconWrap}>
             <Text style={styles.emptyIcon}>🃏</Text>
@@ -384,9 +456,7 @@ export default function FlashcardsScreen() {
   if (isFinished) {
     return (
       <View style={styles.container}>
-        <View style={[styles.blueHeader, { paddingTop: insets.top + 12 }]}>
-          <Text style={styles.emptyHeaderTitle}>Flashcards</Text>
-        </View>
+        <ScreenHeader title="Flashcards" paddingTop={insets.top + 12} />
         <View style={styles.summaryContainer}>
           <Text style={styles.summaryEmoji}>🎉</Text>
           <Text style={styles.summaryTitle}>Session complete</Text>
@@ -395,24 +465,30 @@ export default function FlashcardsScreen() {
           </Text>
           <View style={styles.summaryStatsRow}>
             <View style={styles.summaryStat}>
-              <View style={[styles.summaryDot, { backgroundColor: CORRECT_COLOR }]} />
+              <View style={[styles.summaryDot, styles.summaryDotCorrect]} />
               <Text style={styles.summaryStatLabel}>Correct</Text>
-              <Text style={[styles.summaryStatValue, { color: CORRECT_COLOR }]}>{correctCount}</Text>
+              <Text style={[styles.summaryStatValue, styles.summaryValueCorrect]}>
+                {correctCount}
+              </Text>
             </View>
             <View style={styles.summaryStat}>
-              <View style={[styles.summaryDot, { backgroundColor: WRONG_COLOR }]} />
+              <View style={[styles.summaryDot, styles.summaryDotWrong]} />
               <Text style={styles.summaryStatLabel}>Wrong</Text>
-              <Text style={[styles.summaryStatValue, { color: WRONG_COLOR }]}>{wrongCount}</Text>
+              <Text style={[styles.summaryStatValue, styles.summaryValueWrong]}>
+                {wrongCount}
+              </Text>
             </View>
           </View>
-          <TouchableOpacity
-            style={styles.restartBtn}
+          <Pressable
+            style={({ pressed }) => [
+              styles.restartBtn,
+              pressed && styles.restartBtnPressed,
+            ]}
             onPress={handleRestart}
-            activeOpacity={0.8}
           >
             <Ionicons name="refresh" size={18} color="#FFFFFF" />
-            <Text style={styles.restartBtnText}>Study Again</Text>
-          </TouchableOpacity>
+            <Text style={styles.restartBtnText}>Study again</Text>
+          </Pressable>
         </View>
       </View>
     );
@@ -420,79 +496,83 @@ export default function FlashcardsScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Blue header (matches Progress / Home accent) */}
-      <View style={[styles.blueHeader, { paddingTop: insets.top + 12 }]}>
+      <View style={[styles.sessionHeader, { paddingTop: insets.top + 12 }]}>
         <View style={styles.topBar}>
-          <TouchableOpacity style={styles.topBarBtn} onPress={handleRestart}>
-            <Ionicons name="close" size={24} color="rgba(255,255,255,0.9)" />
-          </TouchableOpacity>
-          <Text style={styles.topBarCounterOnBlue}>
+          <Pressable
+            style={({ pressed }) => [styles.topBarBtn, pressed && styles.topBarBtnPressed]}
+            onPress={handleRestart}
+          >
+            <Ionicons name="close" size={22} color={COLORS.textMuted} />
+          </Pressable>
+          <Text style={styles.topBarCounter}>
             {currentIndex + 1} / {flashcards.length}
           </Text>
           <View style={styles.topBarSpacer} />
         </View>
-        <View style={styles.progressTrackOnBlue}>
+        <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
         </View>
       </View>
 
       <View style={styles.mainBody}>
-      {/* Swipe labels */}
-      <View style={styles.swipeLabelsRow}>
-        <View style={[styles.swipeLabel, styles.swipeLabelWrong]}>
-          <Text style={[styles.swipeLabelText, { color: WRONG_COLOR }]}>Wrong</Text>
+        <View style={styles.swipeLabelsRow}>
+          <View style={[styles.swipeLabel, styles.swipeLabelWrong]}>
+            <Text style={styles.swipeLabelTextWrong}>Wrong</Text>
+          </View>
+          <View style={[styles.swipeLabel, styles.swipeLabelCorrect]}>
+            <Text style={styles.swipeLabelTextCorrect}>Correct</Text>
+          </View>
         </View>
-        <View style={[styles.swipeLabel, styles.swipeLabelCorrect]}>
-          <Text style={[styles.swipeLabelText, { color: CORRECT_COLOR }]}>Correct</Text>
+
+        <View style={styles.cardContainer}>
+          {currentCard ? (
+            <SwipeCard
+              key={`${currentCard.id}-${cardKey}`}
+              phrase={currentCard.phrase.phrase}
+              translation={currentCard.phrase.translation}
+              showTranslationFirst={currentCard.phrase.id.startsWith("translation_")}
+              isFlipped={flippedId === currentCard.id}
+              onFlip={() =>
+                setFlippedId((prev) =>
+                  prev === currentCard.id ? null : currentCard.id,
+                )
+              }
+              onPlay={() => setPlayingId(currentCard.id)}
+              isPlayLoading={playingId === currentCard.id}
+              onSwipeLeft={() => advanceCard("wrong")}
+              onSwipeRight={() => advanceCard("correct")}
+              onDelete={confirmDeleteCard}
+            />
+          ) : null}
         </View>
-      </View>
 
-      {/* Card area */}
-      <View style={styles.cardContainer}>
-        {currentCard && (
-          <SwipeCard
-            key={`${currentCard.id}-${cardKey}`}
-            phrase={currentCard.phrase.phrase}
-            translation={currentCard.phrase.translation}
-            showTranslationFirst={currentCard.phrase.id.startsWith("translation_")}
-            isFlipped={flippedId === currentCard.id}
-            onFlip={() =>
-              setFlippedId((prev) =>
-                prev === currentCard.id ? null : currentCard.id
-              )
-            }
-            onPlay={() => setPlayingId(currentCard.id)}
-            isPlayLoading={playingId === currentCard.id}
-            onSwipeLeft={() => advanceCard("wrong")}
-            onSwipeRight={() => advanceCard("correct")}
-            onDelete={confirmDeleteCard}
-          />
-        )}
-      </View>
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.bottomBtn,
+              currentIndex === 0 && styles.bottomBtnDisabled,
+              pressed && currentIndex > 0 && styles.bottomBtnPressed,
+            ]}
+            onPress={handleUndo}
+            disabled={currentIndex === 0}
+          >
+            <Ionicons
+              name="arrow-undo"
+              size={22}
+              color={currentIndex === 0 ? COLORS.textSubtle : COLORS.textMuted}
+            />
+          </Pressable>
 
-      {/* Bottom bar */}
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
-        <TouchableOpacity
-          style={[styles.bottomBtn, currentIndex === 0 && styles.bottomBtnDisabled]}
-          onPress={handleUndo}
-          disabled={currentIndex === 0}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="arrow-undo"
-            size={24}
-            color={currentIndex === 0 ? TEXT_HINT : TEXT_MUTED}
-          />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.bottomBtn}
-          onPress={() => advanceCard("correct")}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="play" size={24} color={ACCENT} />
-        </TouchableOpacity>
-      </View>
+          <Pressable
+            style={({ pressed }) => [
+              styles.bottomBtnPrimary,
+              pressed && styles.bottomBtnPrimaryPressed,
+            ]}
+            onPress={() => advanceCard("correct")}
+          >
+            <Ionicons name="play" size={22} color="#FFFFFF" />
+          </Pressable>
+        </View>
       </View>
     </View>
   );
@@ -501,51 +581,48 @@ export default function FlashcardsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: BG,
+    backgroundColor: COLORS.bg,
   },
 
-  emptyHeaderTitle: {
-    fontFamily: "Georgia",
-    fontSize: 28,
-    fontWeight: "700",
-    color: "#FFFFFF",
-    marginBottom: 4,
-    letterSpacing: -0.5,
-  },
-  emptyHeaderSubtitle: {
-    fontSize: 14,
-    color: "rgba(255,255,255,0.85)",
-  },
-
-  blueHeader: {
-    backgroundColor: ACCENT,
-    paddingHorizontal: 16,
+  header: {
+    paddingHorizontal: 20,
     paddingBottom: 16,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    shadowColor: ACCENT,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 6,
+    gap: 16,
   },
-  progressTrackOnBlue: {
-    height: 3,
-    backgroundColor: "rgba(255,255,255,0.25)",
-    borderRadius: 2,
-    overflow: "hidden",
-    marginTop: 4,
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 16,
   },
-  mainBody: {
+  headerCopy: {
     flex: 1,
+    gap: 4,
+  },
+  headerTitle: {
+    fontFamily: FONT,
+    fontSize: 28,
+    fontWeight: "500",
+    color: COLORS.text,
+    letterSpacing: -0.8,
+  },
+  headerSubtitle: {
+    fontFamily: FONT,
+    fontSize: 15,
+    fontWeight: "400",
+    color: COLORS.textMuted,
+    letterSpacing: -0.15,
   },
 
+  sessionHeader: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    gap: 14,
+  },
   topBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
   },
   topBarBtn: {
     width: 40,
@@ -554,46 +631,70 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  /** Balances close button so counter stays centered */
+  topBarBtnPressed: {
+    opacity: 0.7,
+  },
   topBarSpacer: {
     width: 40,
     height: 40,
   },
-  topBarCounterOnBlue: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#FFFFFF",
-    letterSpacing: 0.5,
+  topBarCounter: {
+    fontFamily: FONT,
+    fontSize: 15,
+    fontWeight: "500",
+    color: COLORS.textMuted,
+    letterSpacing: -0.15,
   },
-
+  progressTrack: {
+    height: 3,
+    backgroundColor: "rgba(0, 0, 0, 0.06)",
+    borderRadius: 999,
+    overflow: "hidden",
+  },
   progressFill: {
     height: "100%",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 2,
+    backgroundColor: COLORS.text,
+    borderRadius: 999,
   },
 
+  mainBody: {
+    flex: 1,
+  },
   swipeLabelsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    marginTop: 12,
+    marginTop: 4,
   },
   swipeLabel: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
   },
   swipeLabelWrong: {
-    backgroundColor: "rgba(239,68,68,0.12)",
+    backgroundColor: COLORS.wrongSoft,
+    borderColor: "rgba(185, 28, 28, 0.12)",
   },
   swipeLabelCorrect: {
-    backgroundColor: "rgba(34,197,94,0.12)",
+    backgroundColor: COLORS.correctSoft,
+    borderColor: "rgba(21, 128, 61, 0.12)",
   },
-  swipeLabelText: {
+  swipeLabelTextWrong: {
+    fontFamily: FONT,
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: "600",
+    color: COLORS.wrong,
     textTransform: "uppercase",
-    letterSpacing: 0.8,
+    letterSpacing: 0.6,
+  },
+  swipeLabelTextCorrect: {
+    fontFamily: FONT,
+    fontSize: 11,
+    fontWeight: "600",
+    color: COLORS.correct,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
   },
 
   cardContainer: {
@@ -602,7 +703,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 20,
   },
-
   swipeCardOuter: {
     width: SCREEN_WIDTH - 40,
     height: "85%",
@@ -614,26 +714,20 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   swipeOverlayCorrect: {
-    backgroundColor: CORRECT_COLOR,
+    backgroundColor: COLORS.correct,
   },
   swipeOverlayWrong: {
-    backgroundColor: WRONG_COLOR,
+    backgroundColor: COLORS.wrong,
   },
 
   cardTouchable: {
     flex: 1,
     borderRadius: 20,
-    backgroundColor: CARD_BG,
+    backgroundColor: COLORS.surface,
     borderWidth: 1,
-    borderColor: CARD_BORDER,
+    borderColor: COLORS.border,
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4,
   },
-
   flipFace: {
     position: "absolute",
     top: 0,
@@ -642,12 +736,11 @@ const styles = StyleSheet.create({
     bottom: 0,
     padding: 24,
     justifyContent: "space-between",
-    backgroundColor: CARD_BG,
+    backgroundColor: COLORS.surface,
   },
   flipFaceBack: {
-    backgroundColor: ACCENT_SOFT,
+    backgroundColor: COLORS.surfaceMuted,
   },
-
   cardInnerTop: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -657,14 +750,15 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: "#F1F5F9",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.bg,
     alignItems: "center",
     justifyContent: "center",
   },
-  cardActionBtnBack: {
-    backgroundColor: "rgba(255,255,255,0.85)",
+  cardActionBtnPressed: {
+    opacity: 0.85,
   },
-
   cardTextArea: {
     flex: 1,
     justifyContent: "center",
@@ -672,33 +766,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   cardText: {
-    fontSize: 26,
-    fontWeight: "600",
-    color: TEXT_PRIMARY,
+    fontFamily: FONT,
+    fontSize: 28,
+    fontWeight: "500",
+    color: COLORS.text,
     textAlign: "center",
     lineHeight: 36,
-    letterSpacing: -0.3,
+    letterSpacing: -0.7,
   },
   cardTextBack: {
-    fontSize: 26,
-    fontWeight: "600",
-    color: ACCENT,
+    fontFamily: FONT,
+    fontSize: 28,
+    fontWeight: "500",
+    color: COLORS.text,
     textAlign: "center",
     lineHeight: 36,
-    letterSpacing: -0.3,
+    letterSpacing: -0.7,
   },
-
   flipHint: {
+    fontFamily: FONT,
     fontSize: 12,
-    color: TEXT_HINT,
+    color: COLORS.textSubtle,
     textAlign: "center",
     fontWeight: "500",
-  },
-  flipHintBack: {
-    fontSize: 12,
-    color: TEXT_MUTED,
-    textAlign: "center",
-    fontWeight: "500",
+    letterSpacing: -0.12,
   },
 
   bottomBar: {
@@ -712,19 +803,29 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: COLORS.surface,
     borderWidth: 1,
-    borderColor: CARD_BORDER,
+    borderColor: COLORS.border,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
   },
   bottomBtnDisabled: {
     opacity: 0.35,
+  },
+  bottomBtnPressed: {
+    opacity: 0.85,
+  },
+  bottomBtnPrimary: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.cta,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bottomBtnPrimaryPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.98 }],
   },
 
   emptyState: {
@@ -734,29 +835,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: 48,
   },
   emptyIconWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "rgba(41,182,246,0.15)",
+    width: 72,
+    height: 72,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 20,
   },
   emptyIcon: {
-    fontSize: 36,
+    fontSize: 32,
   },
   emptyTitle: {
+    fontFamily: FONT,
     fontSize: 22,
-    fontWeight: "700",
-    color: TEXT_PRIMARY,
+    fontWeight: "500",
+    color: COLORS.text,
     marginBottom: 10,
     textAlign: "center",
+    letterSpacing: -0.44,
   },
   emptyText: {
+    fontFamily: FONT,
     fontSize: 15,
-    color: TEXT_MUTED,
+    color: COLORS.textMuted,
     textAlign: "center",
     lineHeight: 22,
+    letterSpacing: -0.15,
   },
 
   summaryContainer: {
@@ -771,20 +878,23 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   summaryTitle: {
+    fontFamily: FONT,
     fontSize: 28,
-    fontWeight: "800",
-    color: TEXT_PRIMARY,
+    fontWeight: "500",
+    color: COLORS.text,
     marginBottom: 8,
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
   },
   summarySubtitle: {
+    fontFamily: FONT,
     fontSize: 16,
-    color: TEXT_MUTED,
+    color: COLORS.textMuted,
     marginBottom: 32,
+    letterSpacing: -0.16,
   },
   summaryStatsRow: {
     flexDirection: "row",
-    gap: 32,
+    gap: 40,
     marginBottom: 40,
   },
   summaryStat: {
@@ -792,31 +902,52 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   summaryDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  summaryDotCorrect: {
+    backgroundColor: COLORS.correct,
+  },
+  summaryDotWrong: {
+    backgroundColor: COLORS.wrong,
   },
   summaryStatLabel: {
+    fontFamily: FONT,
     fontSize: 13,
-    fontWeight: "600",
-    color: TEXT_MUTED,
+    fontWeight: "500",
+    color: COLORS.textMuted,
   },
   summaryStatValue: {
+    fontFamily: FONT,
     fontSize: 32,
-    fontWeight: "800",
+    fontWeight: "500",
+    letterSpacing: -0.8,
+  },
+  summaryValueCorrect: {
+    color: COLORS.correct,
+  },
+  summaryValueWrong: {
+    color: COLORS.wrong,
   },
   restartBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: ACCENT,
-    paddingHorizontal: 28,
-    paddingVertical: 14,
-    borderRadius: 16,
+    backgroundColor: COLORS.cta,
+    paddingHorizontal: 24,
+    height: 44,
+    borderRadius: 999,
+  },
+  restartBtnPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.98 }],
   },
   restartBtnText: {
+    fontFamily: FONT,
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "500",
     color: "#FFFFFF",
+    letterSpacing: -0.16,
   },
 });
